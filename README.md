@@ -3,7 +3,9 @@
 Live at **https://latex.soreau.eu**. A small equation editor, not a full LaTeX document compiler.
 
 - Live vector preview; incomplete input never replaces the last valid equation with a large error.
-- CodeMirror editor with command autocomplete, editable snippets, undo, and quick-insert templates.
+- Monaco, the editor from VS Code, with LaTeX highlighting, Tab completion, editable snippets, and the usual shortcuts (select all, drag select, multi-cursor, find, undo).
+- Commands autocomplete after `\`, and `Ctrl+Space` lists them anywhere, including after a bare word like `frac`.
+- JetBrains Mono, self-hosted, for the editor.
 - SVG, PNG, JPG, WebP, and raw `.tex` exports; copy source or PNG to the clipboard.
 - Black, white, or custom equation/background colors; transparency; font size, padding, image scale, and JPEG/WebP quality.
 - Local draft saving (optional), share links, light/dark/system themes, and mobile layout.
@@ -34,11 +36,15 @@ SITE_URL=https://latex.soreau.eu npm run test:e2e
 
 ## How it works
 
-Vite + TypeScript, native HTML controls, CodeMirror 6, and MathJax 3's TeX-to-SVG renderer in a dedicated web worker. SVG exports contain glyph paths and do not depend on installed fonts. Raster exports use browser canvas, with dimension/memory limits. Only the TeX packages listed in `src/render.ts` are enabled; dynamic package loading, HTML, and URL commands are disabled. Macro/input limits and a worker watchdog contain expensive or recursive expressions.
+Vite + TypeScript, native HTML controls, Monaco Editor (LaTeX features registered in `src/editor.ts`), and MathJax 3's TeX-to-SVG renderer in a dedicated web worker. SVG exports contain glyph paths and do not depend on installed fonts. Raster exports use browser canvas, with dimension/memory limits. Only the TeX packages listed in `src/render.ts` are enabled; dynamic package loading, HTML, and URL commands are disabled. Macro/input limits and a worker watchdog contain expensive or recursive expressions.
+
+Monaco is imported as the editor API plus its feature set (`src/monaco-setup.ts`) instead of `editor.main`, which would also ship ~90 language grammars and an LSP client. The editor model uses LF line endings so downloads and share links stay portable. The preview SVG is snapped to whole device pixels after every render and resize, which is what keeps thin fraction bars and glyph edges crisp instead of blurring across a half-pixel boundary.
 
 The worker returns either a successful SVG or a short error. The UI only replaces the preview after a successful render, ignores superseded responses, and labels stale previews explicitly. Image exports use the visible last valid equation; `.tex` exports always use the current source. Display style changes may temporarily leave the previous rendering visible while a new result is pending.
 
 `src/export.ts` controls standalone SVG sizing/colors and canvas image exports. MathJax's `PACKAGE_VERSION` is injected at build time so its Node-only version loader is never executed in browsers or under strict CSP.
+
+`tests/e2e/editor.spec.ts` drives the real editor: it types into Monaco, presses Tab and Ctrl+Space, drags to select, checks that a selection is actually painted (by sampling a screenshot pixel, not just the selection state), asserts the preview lands on whole device pixels, and verifies every download byte for byte.
 
 ### Limitations
 

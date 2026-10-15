@@ -1,10 +1,5 @@
-import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { StreamLanguage, bracketMatching } from '@codemirror/language';
-import { stexMath } from '@codemirror/legacy-modes/mode/stex';
-import { autocompletion, completionKeymap, snippetCompletion, type CompletionContext } from '@codemirror/autocomplete';
 import { templates, examples } from './templates';
+import { createEditor, setEditorTheme, type EditorHandle } from './editor';
 import { buildSvg, dimensions, download, imageBlob, type Appearance } from './export';
 import type { RenderedEquation } from './render';
 import './style.css';
@@ -105,7 +100,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           </div>
         </div>
         <div id="editor"></div>
-        <div class="editor-footer"><span>Type <kbd>\\</kbd> for commands. <kbd>Ctrl</kbd>+<kbd>Space</kbd> for autocomplete.</span></div>
+        <div class="editor-footer"><span>Type <kbd>\\</kbd> for commands. <kbd>Tab</kbd> accepts, <kbd>Ctrl</kbd>+<kbd>Space</kbd> lists them.</span></div>
       </section>
       <section class="preview-panel" aria-labelledby="preview-title">
         <div class="panel-heading"><h2 id="preview-title">Preview</h2></div>
@@ -147,7 +142,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <details class="help"><summary>Help &amp; shortcuts</summary><div class="help-content">
       <p>Write math directly, without <code>$</code> delimiters. Pasted <code>$…$</code>, <code>$$…$$</code>, <code>\\(…\\)</code>, and <code>\\[…\\]</code> also work. This is an equation editor, not a full LaTeX document compiler.</p>
       <p>Use <code>\\begin{aligned} … \\end{aligned}</code> for multiple lines, <code>&amp;</code> for alignment, and <code>\\\\</code> for line breaks. AMS math, matrices, cases, colors, and common physics commands are supported.</p>
-      <p><kbd>Ctrl</kbd>+<kbd>Space</kbd> opens autocomplete. <kbd>Enter</kbd> accepts a suggestion. <kbd>Tab</kbd> moves between snippet fields; <kbd>Esc</kbd> then <kbd>Tab</kbd> leaves the editor. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes edits, including loading an example or clearing. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> renders immediately. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> downloads. Use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd> on Mac.</p>
+      <p><kbd>Tab</kbd> accepts a suggestion, then moves through the snippet fields. <kbd>Ctrl</kbd>+<kbd>Space</kbd> lists commands anywhere, including after a partial word like <code>frac</code>. <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back a snippet field, or outdents. <kbd>Esc</kbd> clears a selection, then leaves the editor. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes edits, including loading an example or clearing. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> renders immediately. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> downloads. Use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd> on Mac.</p>
+      <p>The editor is Monaco, the same editor as VS Code, with its default shortcuts: <kbd>Ctrl</kbd>+<kbd>A</kbd> selects everything, <kbd>Ctrl</kbd>+<kbd>D</kbd> adds the next matching selection, <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> moves a line, <kbd>Ctrl</kbd>+<kbd>F</kbd> finds, and dragging or double-clicking selects text.</p>
       <p>Incomplete equation? The last valid preview stays visible, and image downloads use that preview. A compact message explains what to fix. LaTeX downloads and Copy LaTeX always use your current text.</p>
       <p>Transparent backgrounds use a checkerboard here; it is never included in downloads. JPG cannot be transparent and uses white instead. Image scale affects raster downloads only; SVG is vector.</p>
       <p>Everything renders locally in your browser. No accounts, analytics, or equation uploads. Copy link includes the equation in the URL fragment; anyone with the link can read it. Links longer than 12,000 characters should be shared as a .tex file instead.</p>
@@ -190,62 +186,30 @@ function notice(message: string) {
   noticeTimer = setTimeout(() => { el('notice').textContent = ''; }, 6000);
 }
 
-const snippetCommands: Record<string, string> = {
-  frac: '\\frac{${a}}{${b}}', sqrt: '\\sqrt{${x}}', sum: '\\sum_{${i=1}}^{${n}} ${x_i}',
-  prod: '\\prod_{${i=1}}^{${n}} ${x_i}', int: '\\int_{${a}}^{${b}} ${f(x)}\\,dx',
-  lim: '\\lim_{${x \\to 0}} ${f(x)}', text: '\\text{${word}}', mathbb: '\\mathbb{${R}}',
-  mathbf: '\\mathbf{${x}}', overline: '\\overline{${x}}', vec: '\\vec{${v}}',
-  begin: '\\begin{${aligned}}\n${a &= b} \\\\\n${c &= d}\n\\end{${aligned}}',
-};
-const commands = new Set([
-  ...templates.flatMap(t => [...t.latex.matchAll(/\\([a-zA-Z]+)/g)].map(m => m[1])),
-  ...Object.keys(snippetCommands), 'sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'sinh', 'cosh', 'tanh',
-  'log', 'ln', 'exp', 'det', 'max', 'min', 'sup', 'inf', 'langle', 'rangle', 'lVert', 'rVert',
-  'rightarrow', 'leftarrow', 'leftrightarrow', 'Rightarrow', 'Leftarrow', 'Leftrightarrow', 'to', 'mapsto',
-  'ldots', 'cdots', 'vdots', 'ddots', 'underbrace', 'overbrace', 'underset', 'overset', 'displaystyle', 'operatorname', 'color', 'boxed', 'cancel', 'binom', 'dfrac', 'tfrac', 'partial', 'nabla', 'hbar', 'ell',
-]);
-function completions(context: CompletionContext) {
-  const word = context.matchBefore(/\\[a-zA-Z]*/);
-  if (!word || (word.from === word.to && !context.explicit)) return null;
-  return {
-    from: word.from,
-    options: [...commands].map(command => snippetCommands[command]
-      ? snippetCompletion(snippetCommands[command], { label: `\\${command}`, type: 'function', detail: 'template' })
-      : { label: `\\${command}`, type: 'keyword' }),
-    validFor: /^\\[a-zA-Z]*$/,
-  };
+function prefersDark() {
+  return settings.theme === 'dark' || (settings.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
 }
+function applyTheme() {
+  document.documentElement.dataset.theme = settings.theme;
+  setEditorTheme(prefersDark());
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
 
 let saveTimer: ReturnType<typeof setTimeout>;
-const editor = new EditorView({
-  parent: el('editor'),
-  state: EditorState.create({
-    doc: source,
-    extensions: [
-      lineNumbers(), history(), drawSelection(), highlightActiveLine(), EditorView.lineWrapping,
-      StreamLanguage.define(stexMath), bracketMatching(),
-      autocompletion({ override: [completions], activateOnTyping: true, interactionDelay: 0 }),
-      keymap.of([
-        ...completionKeymap, ...defaultKeymap, ...historyKeymap,
-        { key: 'Escape', run: view => { view.contentDOM.blur(); return true; } },
-        indentWithTab,
-        { key: 'Mod-Enter', run: () => { queueRender(true); return true; } },
-        { key: 'Mod-Shift-s', run: () => { void exportCurrent(); return true; } },
-      ]),
-      EditorView.contentAttributes.of({ 'aria-label': 'LaTeX source', 'aria-describedby': 'source-title', spellcheck: 'false', autocapitalize: 'off', autocorrect: 'off' }),
-      EditorView.updateListener.of(update => {
-        if (update.docChanged) {
-          source = update.state.doc.toString();
-          updateCount();
-          queueRender();
-          clearTimeout(saveTimer);
-          saveTimer = setTimeout(save, 400);
-          // Once edited, the old share link no longer describes the current draft.
-          if (location.hash) historyReplace();
-        }
-      }),
-    ],
-  }),
+const editor: EditorHandle = createEditor(el('editor'), {
+  value: source,
+  dark: prefersDark(),
+  onInput(value) {
+    source = value;
+    updateCount();
+    queueRender();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 400);
+    // Once edited, the old share link no longer describes the current draft.
+    if (location.hash) historyReplace();
+  },
+  onRenderRequest: () => queueRender(true),
+  onDownloadRequest: () => void exportCurrent(),
 });
 
 function historyReplace() { window.history.replaceState(null, '', location.pathname + location.search); }
@@ -262,25 +226,13 @@ window.addEventListener('pagehide', save);
 document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 function updateCount() { el('char-count').textContent = `${source.length.toLocaleString()} characters`; }
 function replaceSource(value: string) {
-  editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: value }, selection: { anchor: value.length } });
+  editor.replaceAll(value);
   editor.focus();
 }
 
 function insertTemplate(latex: string) {
-  const selection = editor.state.selection.main;
-  const selected = editor.state.sliceDoc(selection.from, selection.to);
-  const placeholder = /(?<=\{)(a|x|n|word|v)(?=\})/.exec(latex);
-  let insertion = latex;
-  let start = latex.length;
-  let length = 0;
-  if (placeholder) {
-    start = placeholder.index;
-    length = placeholder[0].length;
-    if (selected) { insertion = latex.slice(0, start) + selected + latex.slice(start + length); length = selected.length; }
-  }
-  editor.dispatch({ changes: { from: selection.from, to: selection.to, insert: insertion }, selection: { anchor: selection.from + start, head: selection.from + start + length }, scrollIntoView: true });
   closeMenu('insert-tools');
-  editor.focus();
+  editor.insertTemplate(latex);
 }
 function showTemplates() {
   const category = select('category').value;
@@ -412,12 +364,25 @@ function updatePreview() {
     el('preview').innerHTML = buildSvg(lastGood, settings);
     const size = dimensions(lastGood, settings);
     el('size-info').textContent = `${size.width} × ${size.height} px`;
+    requestAnimationFrame(snapPreview);
   }
   updateExportControls();
 }
+/** Snap the SVG to whole device pixels so hairlines and glyph edges stay crisp. */
+function snapPreview() {
+  const svg = el('preview').querySelector('svg');
+  if (!svg) return;
+  const ratio = window.devicePixelRatio || 1;
+  svg.style.transform = 'none';
+  const rect = svg.getBoundingClientRect();
+  const dx = Math.round(rect.left * ratio) / ratio - rect.left;
+  const dy = Math.round(rect.top * ratio) / ratio - rect.top;
+  if (dx || dy) svg.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+window.addEventListener('resize', () => requestAnimationFrame(snapPreview));
 function syncControls() {
   select('theme').value = settings.theme;
-  document.documentElement.dataset.theme = settings.theme;
+  applyTheme();
   input('display').checked = settings.display;
   input('save-draft').checked = settings.saveDraft;
   input('ink').value = settings.ink;
@@ -433,7 +398,7 @@ function syncControls() {
   updatePreview();
 }
 function appearanceChanged() { updatePreview(); save(); }
-select('theme').addEventListener('change', () => { settings.theme = select('theme').value; document.documentElement.dataset.theme = settings.theme; save(); });
+select('theme').addEventListener('change', () => { settings.theme = select('theme').value; applyTheme(); save(); });
 input('display').addEventListener('change', () => { settings.display = input('display').checked; queueRender(); save(); });
 input('save-draft').addEventListener('change', () => { settings.saveDraft = input('save-draft').checked; save(); });
 for (const kind of ['ink', 'background'] as const) {

@@ -1,13 +1,44 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
-async function edit(page: Page, value: string) {
-  const editor = page.getByRole('textbox', { name: 'LaTeX source' });
-  await editor.fill(value);
+interface EditorBridge {
+  getValue(): string;
+  setValue(value: string): void;
+  getSelectionText(): string;
+  focus(): void;
+}
+type EditorWindow = Window & { __latexEditor?: EditorBridge };
+
+async function setSource(page: Page, value: string) {
+  await page.evaluate(v => {
+    const editor = (window as unknown as EditorWindow).__latexEditor!;
+    editor.setValue(v);
+    editor.focus();
+  }, value);
+}
+async function getValue(page: Page) {
+  return page.evaluate(() => (window as unknown as EditorWindow).__latexEditor!.getValue());
+}
+async function getSelectionText(page: Page) {
+  return page.evaluate(() => (window as unknown as EditorWindow).__latexEditor!.getSelectionText());
 }
 async function ready(page: Page) {
   await expect(page.locator('#render-status')).toHaveText('Up to date', { timeout: 15000 });
   await expect(page.locator('#preview > svg')).toBeVisible();
+}
+async function pixelAt(page: Page, point: { x: number; y: number }) {
+  const shot = await page.screenshot();
+  return page.evaluate(async ({ data, point }) => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${data}`;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(image, 0, 0);
+    return Array.from(context.getImageData(Math.floor(point.x), Math.floor(point.y), 1, 1).data);
+  }, { data: shot.toString('base64'), point });
 }
 test.beforeEach(async ({ page }) => { await page.goto('/'); await ready(page); });
 
@@ -42,14 +73,14 @@ test('keeps secondary controls hidden until their menus are opened', async ({ pa
 
 test('keeps the last good equation on syntax errors, then recovers', async ({ page }) => {
   const svg = await page.locator('#preview').innerHTML();
-  await edit(page, '\\frac{a}{');
+  await setSource(page, '\\frac{a}{');
   await expect(page.locator('#render-status')).toContainText('Last valid preview');
   await expect(page.locator('#preview')).toHaveJSProperty('innerHTML', svg);
   await expect(page.locator('#render-error')).toBeVisible();
   const height = await page.locator('#render-error').evaluate(el => el.getBoundingClientRect().height);
   expect(height).toBeLessThanOrEqual(64);
   await expect(page.getByRole('button', { name: 'Download SVG', exact: true })).toBeEnabled();
-  await edit(page, 'e^{i\\pi} + 1 = 0');
+  await setSource(page, 'e^{i\\pi} + 1 = 0');
   await ready(page);
   await expect(page.locator('#render-error')).toBeHidden();
 });
@@ -115,31 +146,89 @@ test('supports white equations, black backgrounds, scale, and padding', async ({
   expect(corner).toEqual([0, 0, 0, 255]);
 });
 
+test('selects all, highlights the selection, and replaces it by typing', async ({ page }) => {
+  await setSource(page, 'x + y = z');
+  await ready(page);
+  await page.keyboard.press('Control+a');
+  expect(await getSelectionText(page)).toBe('x + y = z');
+  const line = (await page.locator('#editor .view-line').first().boundingBox())!;
+  const point = { x: line.x + 24, y: line.y + line.height / 2 };
+  const selected = await pixelAt(page, point);
+  await page.keyboard.press('ArrowRight');
+  const unselected = await pixelAt(page, point);
+  expect(selected).not.toEqual(unselected);
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('a=b');
+  expect(await getValue(page)).toBe('a=b');
+});
+
+test('selects text by dragging and double-clicking', async ({ page }) => {
+  await setSource(page, 'x + y = z');
+  const lines = (await page.locator('#editor .view-lines').boundingBox())!;
+  const y = lines.y + 12;
+  await page.mouse.move(lines.x + 4, y);
+  await page.mouse.down();
+  await page.mouse.move(lines.x + 70, y, { steps: 12 });
+  await page.mouse.up();
+  const dragged = await getSelectionText(page);
+  expect(dragged.length).toBeGreaterThan(0);
+  expect('x + y = z'.includes(dragged)).toBe(true);
+  await page.mouse.dblclick(lines.x + 5, y);
+  expect(await getSelectionText(page)).toBe('x');
+});
+
+test('Tab accepts a snippet and walks through its fields', async ({ page }) => {
+  await setSource(page, '');
+  await page.keyboard.type('\\fra');
+  await expect(page.locator('.suggest-widget.visible')).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect.poll(() => getValue(page)).toBe('\\frac{a}{b}');
+  expect(await getSelectionText(page)).toBe('a');
+  await page.keyboard.press('Tab');
+  expect(await getSelectionText(page)).toBe('b');
+});
+
+test('Ctrl+Space lists commands, including after a bare word', async ({ page }) => {
+  await setSource(page, '\\sq');
+  await page.keyboard.press('Control+Space');
+  await expect(page.locator('.suggest-widget.visible')).toBeVisible();
+  await expect(page.locator('.suggest-widget.visible .monaco-list-row', { hasText: '\\sqrt' }).first()).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => getValue(page)).toBe('\\sqrt{x}');
+  await setSource(page, 'frac');
+  await page.keyboard.press('Control+Space');
+  await expect(page.locator('.suggest-widget.visible .monaco-list-row.focused')).toContainText('\\frac');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => getValue(page)).toBe('\\frac{a}{b}');
+});
+
 test('inserts templates and accepts autocomplete snippets', async ({ page }) => {
   await sourceAction(page, '#clear');
   await openMenu(page, '#insert-tools');
   await page.getByRole('button', { name: 'Fraction', exact: true }).click();
   await ready(page);
-  await expect(page.locator('.cm-content')).toContainText('\\frac{a}{b}');
+  await expect.poll(() => getValue(page)).toBe('\\frac{a}{b}');
   await expect(page.locator('#category')).toBeHidden();
-  await edit(page, '\\sq');
-  await page.locator('.cm-content').press('Control+Space');
-  await expect(page.getByRole('option', { name: /\\sqrt/ })).toBeVisible();
-  await page.locator('.cm-content').press('Enter');
+  await setSource(page, '\\sq');
+  await page.keyboard.press('Control+Space');
+  await expect(page.locator('.suggest-widget.visible .monaco-list-row', { hasText: '\\sqrt' }).first()).toBeVisible();
+  await page.keyboard.press('Enter');
   await ready(page);
-  await expect(page.locator('.cm-content')).toContainText('\\sqrt{x}');
+  await expect.poll(() => getValue(page)).toBe('\\sqrt{x}');
 });
 
 test('autosaves source, can disable saving, and supports undo clear', async ({ page }) => {
-  await edit(page, 'a^2+b^2=c^2');
+  await setSource(page, 'a^2+b^2=c^2');
   await ready(page);
   await expect(page.locator('#save-status')).toHaveText('Draft saved locally');
   await page.reload(); await ready(page);
-  await expect(page.locator('.cm-content')).toContainText('a^2+b^2=c^2');
+  await expect.poll(() => getValue(page)).toBe('a^2+b^2=c^2');
   await sourceAction(page, '#clear');
   await expect(page.locator('#preview svg')).toHaveCount(0);
-  await page.locator('.cm-content').press('Control+z');
+  await page.locator('#editor .monaco-editor .view-lines').click();
+  await page.keyboard.press('Control+z');
   await ready(page);
+  await expect.poll(() => getValue(page)).toBe('a^2+b^2=c^2');
   await openMenu(page, '#preferences');
   await page.locator('#save-draft').uncheck();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('latex-soreau-v1')!));
@@ -153,15 +242,15 @@ test('loads examples, handles recursive macros, and remains usable', async ({ pa
     await page.locator('#load-example').click();
     await ready(page);
   }
-  await edit(page, '\\def\\x{\\x}\\x');
+  await setSource(page, '\\def\\x{\\x}\\x');
   await expect(page.locator('#render-error')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('#preview svg')).toBeVisible();
-  await edit(page, 'x=1'); await ready(page);
+  await setSource(page, 'x=1'); await ready(page);
 });
 
 test('share links restore unicode source and appearance without network uploads', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await edit(page, '\\text{énergie} = mc^2'); await ready(page);
+  await setSource(page, '\\text{énergie} = mc^2'); await ready(page);
   await openMenu(page, '#appearance-options');
   await page.locator('#font-size').fill('40');
   await sourceAction(page, '#share');
@@ -170,10 +259,38 @@ test('share links restore unicode source and appearance without network uploads'
   const freshContext = await page.context().browser()!.newContext();
   const fresh = await freshContext.newPage();
   await fresh.goto(url); await ready(fresh);
-  await expect(fresh.locator('.cm-content')).toContainText('énergie');
+  await expect.poll(() => getValue(fresh)).toBe('\\text{énergie} = mc^2');
   await openMenu(fresh, '#appearance-options');
   await expect(fresh.locator('#font-size')).toHaveValue('40');
   await freshContext.close();
+});
+
+test('uses the self-hosted JetBrains Mono font in the editor', async ({ page }) => {
+  const loaded = await page.evaluate(async () => {
+    await document.fonts.load('15px "JetBrains Mono"');
+    return document.fonts.check('15px "JetBrains Mono"');
+  });
+  expect(loaded).toBe(true);
+  const family = await page.evaluate(() => getComputedStyle(document.querySelector('#editor .monaco-editor .view-lines')!).fontFamily);
+  expect(family).toContain('JetBrains Mono');
+});
+
+test('preview aligns to whole device pixels', async ({ page }) => {
+  const offset = async () => page.evaluate(() => {
+    const svg = document.querySelector('#preview > svg') as SVGSVGElement;
+    const rect = svg.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    return {
+      x: Math.abs(rect.left * ratio - Math.round(rect.left * ratio)),
+      y: Math.abs(rect.top * ratio - Math.round(rect.top * ratio)),
+    };
+  });
+  await expect.poll(async () => (await offset()).y).toBeLessThan(0.05);
+  expect((await offset()).x).toBeLessThan(0.05);
+  await openMenu(page, '#appearance-options');
+  await page.locator('#font-size').fill('61');
+  await expect.poll(async () => (await offset()).y, { timeout: 10000 }).toBeLessThan(0.05);
+  expect((await offset()).x).toBeLessThan(0.05);
 });
 
 test('mobile layouts and both themes have no page overflow', async ({ page }) => {
@@ -193,7 +310,7 @@ test('mobile layouts and both themes have no page overflow', async ({ page }) =>
 });
 
 test('empty source disables downloads and unknown commands do not erase preview', async ({ page }) => {
-  await edit(page, '\\unknowncommand{x}');
+  await setSource(page, '\\unknowncommand{x}');
   await expect(page.locator('#render-error')).toContainText('Undefined control sequence');
   await expect(page.locator('#preview svg')).toBeVisible();
   await sourceAction(page, '#clear');
