@@ -223,6 +223,22 @@ export function setEditorTheme(dark: boolean) {
   monaco.editor.setTheme(dark ? 'latex-dark' : 'latex-light');
 }
 
+const FONT_SPECS = ['15px "JetBrains Mono"', 'bold 15px "JetBrains Mono"', 'italic 15px "JetBrains Mono"'];
+
+/**
+ * The editor's metrics depend on the font that is actually rendered. Monaco
+ * caches character widths when the editor is created, so a font that swaps in
+ * afterwards leaves clicks and the caret offset from the text under the
+ * pointer. Wait for the font before creating the editor.
+ */
+export async function loadEditorFont(): Promise<void> {
+  try {
+    await Promise.all(FONT_SPECS.map(spec => document.fonts.load(spec)));
+  } catch {
+    // Fall back to the default monospace metrics rather than blocking the editor.
+  }
+}
+
 export interface EditorOptions {
   value: string;
   dark: boolean;
@@ -273,6 +289,10 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
   editor.onDidChangeModelContent(() => options.onInput(editor.getValue()));
   // Keep one line-ending style so downloads, share links, and diffs stay portable.
   editor.getModel()?.setEOL(monaco.editor.EndOfLineSequence.LF);
+  // If any face loads later (a text subset, a slow retry), re-measure so
+  // hit-testing keeps matching what is on screen.
+  void document.fonts?.ready.then(() => monaco.editor.remeasureFonts());
+  document.fonts?.addEventListener('loadingdone', () => monaco.editor.remeasureFonts());
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => options.onRenderRequest());
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyS, () => options.onDownloadRequest());
   // Tab accepts the highlighted suggestion (Monaco's built-in binding, enabled by

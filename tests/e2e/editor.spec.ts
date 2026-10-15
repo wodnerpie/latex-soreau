@@ -276,6 +276,42 @@ test('uses the self-hosted JetBrains Mono font in the editor', async ({ page }) 
   expect(family).toContain('JetBrains Mono');
 });
 
+test('clicks land on the character under the pointer even when the font loads late', async ({ page }) => {
+  // Monaco caches glyph metrics when it is created; a font that swaps in later
+  // used to leave every click sitting to the left of the intended character.
+  await page.route('**/*.woff2', async route => {
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    await route.continue();
+  });
+  await page.goto('/');
+  await page.waitForFunction(() => !!(window as unknown as EditorWindow).__latexEditor, undefined, { timeout: 20000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(200);
+  const digits = '0123456789012345678901234567890123456789';
+  await setSource(page, digits);
+  const geometry = await page.evaluate(() => {
+    const line = document.querySelector('#editor .view-line')!;
+    const span = line.querySelector('span') ?? line;
+    const lineBox = line.getBoundingClientRect();
+    const spanBox = span.getBoundingClientRect();
+    return {
+      textOriginX: spanBox.left,
+      advance: spanBox.width / (line.textContent ?? '').length,
+      lineTop: lineBox.top,
+      lineHeight: lineBox.height,
+    };
+  });
+  const loaded = await page.evaluate(async () => { await document.fonts.load('15px "JetBrains Mono"'); return document.fonts.check('15px "JetBrains Mono"'); });
+  expect(loaded).toBe(true);
+  for (const index of [10, 20, 30]) {
+    await setSource(page, digits);
+    await page.mouse.click(geometry.textOriginX + (index + 0.5) * geometry.advance, geometry.lineTop + geometry.lineHeight / 2);
+    await page.keyboard.type('Z');
+    const insertedAt = (await getValue(page)).indexOf('Z');
+    expect(Math.abs(insertedAt - index), `click on character ${index}`).toBeLessThanOrEqual(1);
+  }
+});
+
 test('preview aligns to whole device pixels', async ({ page }) => {
   const offset = async () => page.evaluate(() => {
     const svg = document.querySelector('#preview > svg') as SVGSVGElement;

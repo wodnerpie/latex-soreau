@@ -202,9 +202,12 @@ let editor: EditorHandle | undefined;
  * Monaco is about a megabyte, so it loads after the first paint instead of
  * blocking it. Anything that needs the editor awaits this promise.
  */
-const editorReady = import('./editor').then(module => {
+const editorReady = import('./editor').then(async module => {
   editorModule = module;
   const container = el('editor');
+  // Wait for JetBrains Mono first: Monaco caches glyph metrics at creation, and
+  // a font that swaps in later makes clicks land beside the text under the pointer.
+  await module.loadEditorFont();
   container.replaceChildren();
   container.removeAttribute('aria-busy');
   editor = module.createEditor(container, {
