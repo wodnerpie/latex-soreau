@@ -1,0 +1,39 @@
+name: latex-soreau
+services:
+  web:
+    build: .
+    image: latex-soreau:local
+    container_name: latex-soreau
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    networks:
+      - coolify
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: coolify
+      traefik.http.routers.latex-soreau-http.entrypoints: http
+      traefik.http.routers.latex-soreau-http.rule: Host(`latex.soreau.eu`)
+      traefik.http.routers.latex-soreau-http.middlewares: latex-soreau-https
+      traefik.http.middlewares.latex-soreau-https.redirectscheme.scheme: https
+      traefik.http.middlewares.latex-soreau-https.redirectscheme.permanent: "true"
+      traefik.http.routers.latex-soreau.entrypoints: https
+      traefik.http.routers.latex-soreau.rule: Host(`latex.soreau.eu`)
+      traefik.http.routers.latex-soreau.tls: "true"
+      traefik.http.routers.latex-soreau.tls.certresolver: letsencrypt
+      traefik.http.services.latex-soreau.loadbalancer.server.port: "8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+networks:
+  coolify:
+    external: true
