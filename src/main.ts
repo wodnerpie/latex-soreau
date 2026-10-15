@@ -60,8 +60,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <header>
     <h1>LaTeX equation editor</h1>
     <div class="header-controls">
-      <button id="share" type="button" title="Copy a link containing the current equation and appearance">Copy link</button>
-      <label class="inline-label" for="theme">Theme <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+      <details id="preferences" class="menu">
+        <summary>Settings</summary>
+        <div class="dropdown-panel preferences-panel">
+          <label class="inline-label" for="theme">Theme <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <label class="checkbox"><input id="save-draft" type="checkbox" checked /> Save draft in this browser</label>
+          <span id="save-status" class="hint"></span>
+        </div>
+      </details>
     </div>
   </header>
   <main>
@@ -69,12 +75,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <section class="source-panel" aria-labelledby="source-title">
         <div class="panel-heading">
           <h2 id="source-title">LaTeX</h2>
-          <div class="actions"><button id="copy-source" type="button">Copy LaTeX</button><button id="clear" type="button" title="Clear the editor (undo to restore)">Clear</button></div>
-        </div>
-        <div id="editor"></div>
-        <div class="editor-footer"><span>Type <kbd>\\</kbd> for commands. <kbd>Ctrl</kbd>+<kbd>Space</kbd> for autocomplete.</span><span id="char-count"></span></div>
-        <details id="insert-tools" open>
-          <summary>Insert symbols &amp; templates</summary>
+          <div class="actions">
+          <details id="insert-tools" class="menu wide-menu">
+          <summary>Insert</summary>
+          <div class="dropdown-panel">
           <div class="template-filters">
             <label class="sr-only" for="category">Template category</label>
             <select id="category"><option>Structure</option><option>Calculus</option><option>Symbols</option><option>Greek</option><option>Sets</option><option>Layouts</option><option>All</option></select>
@@ -82,34 +86,62 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
             <input id="template-search" type="search" placeholder="Search templates…" autocomplete="off" />
           </div>
           <div id="templates" class="template-list"></div>
-        </details>
         <div class="example-row">
           <label for="examples">Examples</label>
           <select id="examples"><option value="">Choose an example…</option></select>
           <button id="load-example" type="button" disabled>Load</button>
         </div>
+          </div>
+          </details>
+          <details id="source-actions" class="menu">
+            <summary>More</summary>
+            <div class="dropdown-panel action-menu">
+              <button id="copy-source" type="button">Copy LaTeX</button>
+              <button id="share" type="button" title="Copy a link containing the current equation and appearance">Copy link</button>
+              <button id="clear" type="button" title="Clear the editor (undo to restore)">Clear</button>
+              <span id="char-count" class="hint"></span>
+            </div>
+          </details>
+          </div>
+        </div>
+        <div id="editor"></div>
+        <div class="editor-footer"><span>Type <kbd>\\</kbd> for commands. <kbd>Ctrl</kbd>+<kbd>Space</kbd> for autocomplete.</span></div>
       </section>
       <section class="preview-panel" aria-labelledby="preview-title">
-        <div class="panel-heading"><h2 id="preview-title">Preview</h2><label class="checkbox"><input id="display" type="checkbox" checked /> Display style</label></div>
+        <div class="panel-heading"><h2 id="preview-title">Preview</h2></div>
         <div id="preview-stage" class="checker"><div id="preview"><span class="empty-preview">Rendering equation…</span></div></div>
-        <div class="preview-status"><span id="render-status" role="status" aria-live="polite">Loading renderer…</span><button id="retry" type="button" hidden>Retry</button><span id="size-info"></span></div>
+        <div class="preview-status"><span id="render-status" role="status" aria-live="polite">Loading renderer…</span><button id="retry" type="button" hidden>Retry</button></div>
         <div id="render-error" role="status" aria-live="polite" hidden></div>
-        <fieldset class="appearance"><legend>Appearance</legend>
+        <div class="download-actions">
+          <label for="format" class="sr-only">Format</label><select id="format"><option value="svg">SVG (vector)</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="webp">WebP</option><option value="tex">LaTeX (.tex)</option></select>
+          <button id="download" class="primary" type="button" disabled>Download SVG</button>
+        </div>
+        <p id="export-note" class="hint" hidden>SVG stays sharp at any size.</p>
+        <div class="preview-options">
+        <details id="appearance-options" class="menu wide-menu"><summary>Appearance</summary>
+        <div class="dropdown-panel">
+        <div class="appearance">
           <div class="control"><label for="ink-preset">Equation color</label><div class="color-control"><select id="ink-preset"><option value="#000000">Black</option><option value="#ffffff">White</option><option value="custom">Custom</option></select><input type="color" id="ink" aria-label="Custom equation color" value="#000000" /></div></div>
           <div class="control"><label for="background-preset">Background</label><div class="color-control"><select id="background-preset"><option value="transparent">Transparent</option><option value="#ffffff">White</option><option value="#000000">Black</option><option value="custom">Custom</option></select><input type="color" id="background" aria-label="Custom background color" value="#ffffff" /></div></div>
           <div class="control"><label for="font-size">Font size (px)</label><input id="font-size" type="number" min="8" max="200" value="32" /></div>
           <div class="control"><label for="padding">Padding (px)</label><input id="padding" type="number" min="0" max="200" value="16" /></div>
-        </fieldset>
-        <fieldset class="export"><legend>Download</legend>
+        </div>
+        <label class="checkbox display-option"><input id="display" type="checkbox" checked /> Display style</label>
+        </div>
+        </details>
+        <details id="export-options" class="menu wide-menu"><summary>Export options</summary>
+        <div class="dropdown-panel">
           <div class="export-controls">
-            <div class="control"><label for="format">Format</label><select id="format"><option value="svg">SVG (vector)</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="webp">WebP</option><option value="tex">LaTeX (.tex)</option></select></div>
             <div class="control"><label for="scale">Image scale</label><select id="scale"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option><option value="8">8×</option></select></div>
             <div class="control"><label for="filename">Filename</label><input id="filename" type="text" value="equation" maxlength="80" spellcheck="false" /></div>
           </div>
           <div id="quality-control" class="quality-control" hidden><label for="quality">Quality <output id="quality-value">95%</output></label><input id="quality" type="range" min="10" max="100" value="95" /></div>
-          <p id="export-note" class="hint">SVG stays sharp at any size.</p>
-          <div class="download-actions"><button id="download" class="primary" type="button" disabled>Download SVG</button><button id="copy-image" type="button" disabled>Copy image</button><span id="export-size" class="hint"></span></div>
-        </fieldset>
+          <div class="export-info hint"><span id="size-info"></span><span id="export-size"></span></div>
+          <p class="hint">Image scale affects PNG, JPG, and WebP only. SVG stays sharp at any size.</p>
+          <button id="copy-image" type="button" disabled>Copy image</button>
+        </div>
+        </details>
+        </div>
       </section>
     </div>
     <details class="help"><summary>Help &amp; shortcuts</summary><div class="help-content">
@@ -121,7 +153,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <p>Everything renders locally in your browser. No accounts, analytics, or equation uploads. Copy link includes the equation in the URL fragment; anyone with the link can read it. Links longer than 12,000 characters should be shared as a .tex file instead.</p>
     </div></details>
   </main>
-  <footer><label class="checkbox"><input id="save-draft" type="checkbox" checked /> Save draft in this browser</label><span id="save-status"></span><a href="https://github.com/wodnerpie/latex-soreau" target="_blank" rel="noopener noreferrer">GitHub</a></footer>
+  <footer><a href="https://github.com/wodnerpie/latex-soreau" target="_blank" rel="noopener noreferrer">GitHub</a></footer>
   <div id="notice" role="status" aria-live="polite"></div>
 `;
 
@@ -129,6 +161,28 @@ function el<T extends HTMLElement = HTMLElement>(id: string): T { return documen
 const input = (id: string) => el<HTMLInputElement>(id);
 const select = (id: string) => el<HTMLSelectElement>(id);
 const button = (id: string) => el<HTMLButtonElement>(id);
+const menus = [...document.querySelectorAll<HTMLDetailsElement>('details.menu')];
+function closeMenu(id: string) { el<HTMLDetailsElement>(id).open = false; }
+document.addEventListener('click', event => {
+  if (!(event.target instanceof Node)) return;
+  for (const menu of menus) {
+    if (menu.open && !menu.contains(event.target)) menu.open = false;
+  }
+});
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  const menu = menus.find(menu => menu.open);
+  if (menu) {
+    menu.open = false;
+    menu.querySelector('summary')?.focus();
+    event.preventDefault();
+  }
+});
+el('source-actions').addEventListener('click', event => {
+  if (!(event.target instanceof HTMLButtonElement)) return;
+  closeMenu('source-actions');
+  if (event.target.id !== 'clear') el('source-actions').querySelector('summary')?.focus();
+});
 let noticeTimer: ReturnType<typeof setTimeout>;
 function notice(message: string) {
   el('notice').textContent = message;
@@ -225,6 +279,7 @@ function insertTemplate(latex: string) {
     if (selected) { insertion = latex.slice(0, start) + selected + latex.slice(start + length); length = selected.length; }
   }
   editor.dispatch({ changes: { from: selection.from, to: selection.to, insert: insertion }, selection: { anchor: selection.from + start, head: selection.from + start + length }, scrollIntoView: true });
+  closeMenu('insert-tools');
   editor.focus();
 }
 function showTemplates() {
@@ -249,7 +304,12 @@ select('category').addEventListener('change', showTemplates);
 input('template-search').addEventListener('input', showTemplates);
 for (const name of Object.keys(examples)) select('examples').add(new Option(name, name));
 select('examples').addEventListener('change', () => { button('load-example').disabled = !select('examples').value; });
-button('load-example').addEventListener('click', () => { if (examples[select('examples').value]) replaceSource(examples[select('examples').value]); });
+button('load-example').addEventListener('click', () => {
+  if (examples[select('examples').value]) {
+    closeMenu('insert-tools');
+    replaceSource(examples[select('examples').value]);
+  }
+});
 button('clear').addEventListener('click', () => replaceSource(''));
 
 let worker: Worker | undefined;
@@ -415,6 +475,8 @@ function updateExportControls() {
     : format === 'svg' ? 'SVG stays sharp at any size.'
     : format === 'tex' ? 'Downloads your current LaTeX source, including unfinished edits.'
     : 'Image scale increases the resolution without changing the equation.';
+  // Only surface information that requires attention; general export help stays in the menu.
+  el('export-note').hidden = !(format === 'jpg' && settings.background === 'transparent');
   if (lastGood && raster) {
     const size = dimensions(lastGood, settings);
     el('export-size').textContent = `${Math.ceil(size.width * settings.scale)} × ${Math.ceil(size.height * settings.scale)} px`;

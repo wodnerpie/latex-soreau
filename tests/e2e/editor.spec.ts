@@ -11,6 +11,35 @@ async function ready(page: Page) {
 }
 test.beforeEach(async ({ page }) => { await page.goto('/'); await ready(page); });
 
+async function openMenu(page: Page, id: string) {
+  if (await page.locator(`${id}[open]`).count()) return;
+  if (await page.locator('details.menu[open]').count()) await page.keyboard.press('Escape');
+  await page.locator(`${id} > summary`).click();
+}
+async function sourceAction(page: Page, id: string) {
+  await openMenu(page, '#source-actions');
+  await page.locator(id).click();
+}
+
+test('keeps secondary controls hidden until their menus are opened', async ({ page }) => {
+  for (const id of ['#category', '#examples', '#ink-preset', '#display', '#scale', '#filename', '#theme', '#save-draft', '#clear', '#copy-image']) {
+    await expect(page.locator(id)).toBeHidden();
+  }
+  await expect(page.locator('#format')).toBeVisible();
+  await expect(page.locator('#download')).toBeVisible();
+  await openMenu(page, '#insert-tools');
+  await expect(page.locator('#category')).toBeVisible();
+  await page.locator('#preferences > summary').click();
+  await expect(page.locator('#category')).toBeHidden();
+  await expect(page.locator('#theme')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#theme')).toBeHidden();
+  await expect(page.locator('#preferences > summary')).toBeFocused();
+  await openMenu(page, '#appearance-options');
+  await page.getByRole('heading', { name: 'LaTeX equation editor' }).click();
+  await expect(page.locator('#ink-preset')).toBeHidden();
+});
+
 test('keeps the last good equation on syntax errors, then recovers', async ({ page }) => {
   const svg = await page.locator('#preview').innerHTML();
   await edit(page, '\\frac{a}{');
@@ -62,6 +91,7 @@ test('exports all formats, including transparent PNG and opaque JPG', async ({ p
 });
 
 test('supports white equations, black backgrounds, scale, and padding', async ({ page }) => {
+  await openMenu(page, '#appearance-options');
   await page.locator('#ink-preset').selectOption('#ffffff');
   await expect(page.locator('#preview-stage')).toHaveClass(/checker-dark/);
   await page.locator('#background-preset').selectOption('#000000');
@@ -70,6 +100,7 @@ test('supports white equations, black backgrounds, scale, and padding', async ({
   await expect(page.locator('#preview svg')).toHaveAttribute('color', '#ffffff');
   await expect(page.locator('#preview svg > rect').first()).toHaveAttribute('fill', '#000000');
   await page.locator('#format').selectOption('png');
+  await openMenu(page, '#export-options');
   await page.locator('#scale').selectOption('4');
   await expect(page.locator('#export-size')).toContainText('px');
   const promise = page.waitForEvent('download');
@@ -85,10 +116,12 @@ test('supports white equations, black backgrounds, scale, and padding', async ({
 });
 
 test('inserts templates and accepts autocomplete snippets', async ({ page }) => {
-  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await sourceAction(page, '#clear');
+  await openMenu(page, '#insert-tools');
   await page.getByRole('button', { name: 'Fraction', exact: true }).click();
   await ready(page);
   await expect(page.locator('.cm-content')).toContainText('\\frac{a}{b}');
+  await expect(page.locator('#category')).toBeHidden();
   await edit(page, '\\sq');
   await page.locator('.cm-content').press('Control+Space');
   await expect(page.getByRole('option', { name: /\\sqrt/ })).toBeVisible();
@@ -103,10 +136,11 @@ test('autosaves source, can disable saving, and supports undo clear', async ({ p
   await expect(page.locator('#save-status')).toHaveText('Draft saved locally');
   await page.reload(); await ready(page);
   await expect(page.locator('.cm-content')).toContainText('a^2+b^2=c^2');
-  await page.locator('#clear').click();
+  await sourceAction(page, '#clear');
   await expect(page.locator('#preview svg')).toHaveCount(0);
   await page.locator('.cm-content').press('Control+z');
   await ready(page);
+  await openMenu(page, '#preferences');
   await page.locator('#save-draft').uncheck();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('latex-soreau-v1')!));
   expect(saved.source).toBeUndefined();
@@ -114,6 +148,7 @@ test('autosaves source, can disable saving, and supports undo clear', async ({ p
 
 test('loads examples, handles recursive macros, and remains usable', async ({ page }) => {
   for (const example of ['Matrix', 'Aligned equations', 'Piecewise function', 'Physics']) {
+    await openMenu(page, '#insert-tools');
     await page.locator('#examples').selectOption(example);
     await page.locator('#load-example').click();
     await ready(page);
@@ -127,14 +162,16 @@ test('loads examples, handles recursive macros, and remains usable', async ({ pa
 test('share links restore unicode source and appearance without network uploads', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await edit(page, '\\text{énergie} = mc^2'); await ready(page);
+  await openMenu(page, '#appearance-options');
   await page.locator('#font-size').fill('40');
-  await page.locator('#share').click();
+  await sourceAction(page, '#share');
   const url = await page.evaluate(() => navigator.clipboard.readText());
   expect(url).toContain('#equation=');
   const freshContext = await page.context().browser()!.newContext();
   const fresh = await freshContext.newPage();
   await fresh.goto(url); await ready(fresh);
   await expect(fresh.locator('.cm-content')).toContainText('énergie');
+  await openMenu(fresh, '#appearance-options');
   await expect(fresh.locator('#font-size')).toHaveValue('40');
   await freshContext.close();
 });
@@ -143,9 +180,14 @@ test('mobile layouts and both themes have no page overflow', async ({ page }) =>
   for (const width of [320, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 850 });
     for (const theme of ['light', 'dark']) {
+      await openMenu(page, '#preferences');
       await page.locator('#theme').selectOption(theme);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
       expect(overflow, `${width}px ${theme}`).toBe(false);
+      for (const id of ['#insert-tools', '#source-actions', '#appearance-options', '#export-options']) {
+        await openMenu(page, id);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), `${id} at ${width}px ${theme}`).toBe(false);
+      }
     }
   }
 });
@@ -154,7 +196,7 @@ test('empty source disables downloads and unknown commands do not erase preview'
   await edit(page, '\\unknowncommand{x}');
   await expect(page.locator('#render-error')).toContainText('Undefined control sequence');
   await expect(page.locator('#preview svg')).toBeVisible();
-  await page.locator('#clear').click();
+  await sourceAction(page, '#clear');
   await expect(page.locator('#download')).toBeDisabled();
   await expect(page.locator('#preview svg')).toHaveCount(0);
 });

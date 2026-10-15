@@ -7,6 +7,7 @@ Live at **https://latex.soreau.eu**. A small equation editor, not a full LaTeX d
 - SVG, PNG, JPG, WebP, and raw `.tex` exports; copy source or PNG to the clipboard.
 - Black, white, or custom equation/background colors; transparency; font size, padding, image scale, and JPEG/WebP quality.
 - Local draft saving (optional), share links, light/dark/system themes, and mobile layout.
+- A focused default view: editor, preview, format, and download. Insert, More, Appearance, Export options, and Settings menus reveal secondary tools only when needed.
 - Browser-only rendering. No API, accounts, equation uploads, external assets, analytics, or tracking.
 
 ## Develop
