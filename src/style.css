@@ -47,6 +47,7 @@ main { padding: 0 24px; }
 .panel-heading, .preview-options { position: relative; }
 .panel-heading .actions button { min-height: 30px; padding-block: 3px; }
 #editor { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; overflow: hidden; height: 300px; }
+.editor-loading { margin: 0; padding: 14px; color: var(--muted); font-size: 13px; }
 #editor:focus-within { border-color: var(--focus); }
 #editor .monaco-editor, #editor .monaco-editor .overflow-guard { border-radius: 3px; }
 #editor .monaco-editor .scroll-decoration { box-shadow: none; }

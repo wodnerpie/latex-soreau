@@ -23,6 +23,7 @@ async function getSelectionText(page: Page) {
   return page.evaluate(() => (window as unknown as EditorWindow).__latexEditor!.getSelectionText());
 }
 async function ready(page: Page) {
+  await page.waitForFunction(() => !!(window as unknown as EditorWindow).__latexEditor, undefined, { timeout: 20000 });
   await expect(page.locator('#render-status')).toHaveText('Up to date', { timeout: 15000 });
   await expect(page.locator('#preview > svg')).toBeVisible();
 }

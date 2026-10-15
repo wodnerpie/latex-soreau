@@ -1,5 +1,5 @@
 import { templates, examples } from './templates';
-import { createEditor, setEditorTheme, type EditorHandle } from './editor';
+import type { EditorHandle } from './editor';
 import { buildSvg, dimensions, download, imageBlob, type Appearance } from './export';
 import type { RenderedEquation } from './render';
 import './style.css';
@@ -99,7 +99,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           </details>
           </div>
         </div>
-        <div id="editor"></div>
+        <div id="editor" aria-busy="true"><p class="editor-loading">Loading editor…</p></div>
         <div class="editor-footer"><span>Type <kbd>\\</kbd> for commands. <kbd>Tab</kbd> accepts, <kbd>Ctrl</kbd>+<kbd>Space</kbd> lists them.</span></div>
       </section>
       <section class="preview-panel" aria-labelledby="preview-title">
@@ -189,27 +189,43 @@ function notice(message: string) {
 function prefersDark() {
   return settings.theme === 'dark' || (settings.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
 }
+let editorModule: typeof import('./editor') | undefined;
 function applyTheme() {
   document.documentElement.dataset.theme = settings.theme;
-  setEditorTheme(prefersDark());
+  editorModule?.setEditorTheme(prefersDark());
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
 
 let saveTimer: ReturnType<typeof setTimeout>;
-const editor: EditorHandle = createEditor(el('editor'), {
-  value: source,
-  dark: prefersDark(),
-  onInput(value) {
-    source = value;
-    updateCount();
-    queueRender();
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(save, 400);
-    // Once edited, the old share link no longer describes the current draft.
-    if (location.hash) historyReplace();
-  },
-  onRenderRequest: () => queueRender(true),
-  onDownloadRequest: () => void exportCurrent(),
+let editor: EditorHandle | undefined;
+/**
+ * Monaco is about a megabyte, so it loads after the first paint instead of
+ * blocking it. Anything that needs the editor awaits this promise.
+ */
+const editorReady = import('./editor').then(module => {
+  editorModule = module;
+  const container = el('editor');
+  container.replaceChildren();
+  container.removeAttribute('aria-busy');
+  editor = module.createEditor(container, {
+    value: source,
+    dark: prefersDark(),
+    onInput(value) {
+      source = value;
+      updateCount();
+      queueRender();
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(save, 400);
+      // Once edited, the old share link no longer describes the current draft.
+      if (location.hash) historyReplace();
+    },
+    onRenderRequest: () => queueRender(true),
+    onDownloadRequest: () => void exportCurrent(),
+  });
+  return editor;
+}).catch(error => {
+  el('editor').innerHTML = '<p class="editor-loading">The editor could not load. Reload the page.</p>';
+  throw error;
 });
 
 function historyReplace() { window.history.replaceState(null, '', location.pathname + location.search); }
@@ -226,13 +242,15 @@ window.addEventListener('pagehide', save);
 document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 function updateCount() { el('char-count').textContent = `${source.length.toLocaleString()} characters`; }
 function replaceSource(value: string) {
-  editor.replaceAll(value);
-  editor.focus();
+  void editorReady.then(instance => {
+    instance.replaceAll(value);
+    instance.focus();
+  });
 }
 
 function insertTemplate(latex: string) {
   closeMenu('insert-tools');
-  editor.insertTemplate(latex);
+  void editorReady.then(instance => instance.insertTemplate(latex));
 }
 function showTemplates() {
   const category = select('category').value;
