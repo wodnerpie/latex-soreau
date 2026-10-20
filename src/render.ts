@@ -19,6 +19,114 @@ export interface RenderedEquation {
   svg: string;
   viewBox: [number, number, number, number];
   source: string;
+  /** The completed source when the preview needed missing closers appended. */
+  completed?: string;
+}
+
+type OpenConstruct =
+  | { kind: 'brace' }
+  | { kind: 'left'; close: string }
+  | { kind: 'environment'; name: string };
+
+const rightDelimiters: Record<string, string> = {
+  '(': ')', '[': ']', '\\{': '\\}', '|': '|', '\\|': '\\|', '.': '.', '/': '/', '<': '>',
+  '\\lbrace': '\\rbrace', '\\lbrack': '\\rbrack', '\\langle': '\\rangle',
+  '\\lvert': '\\rvert', '\\lVert': '\\rVert', '\\lfloor': '\\rfloor', '\\lceil': '\\rceil',
+  '\\lgroup': '\\rgroup', '\\lmoustache': '\\rmoustache',
+  '\\uparrow': '\\downarrow', '\\downarrow': '\\uparrow', '\\updownarrow': '\\updownarrow',
+  '\\Uparrow': '\\Downarrow', '\\Downarrow': '\\Uparrow', '\\Updownarrow': '\\Updownarrow',
+};
+
+function readDelimiter(source: string, start: number): { value: string; end: number } | undefined {
+  let index = start;
+  while (index < source.length && /\s/.test(source[index])) index += 1;
+  if (index >= source.length) return undefined;
+  if (source[index] === '\\') {
+    const match = /^\\(?:[a-zA-Z]+|.)/.exec(source.slice(index));
+    return match ? { value: match[0], end: index + match[0].length } : undefined;
+  }
+  return /^[()[\]{}|./<>]$/.test(source[index]) ? { value: source[index], end: index + 1 } : undefined;
+}
+
+function readEnvironmentName(source: string, start: number): { name: string; end: number } | undefined {
+  let index = start;
+  while (index < source.length && /\s/.test(source[index])) index += 1;
+  if (source[index] !== '{') return undefined;
+  const close = source.indexOf('}', index + 1);
+  if (close < 0) return undefined;
+  const name = source.slice(index + 1, close).trim();
+  return name ? { name, end: close + 1 } : undefined;
+}
+
+/**
+ * Appends the closers that turn a half-written equation into one MathJax can
+ * render: `}`, `\right…`, and `\end{…}`. Returns undefined when nothing is open.
+ * Comments and escaped braces are skipped so they never affect the stack.
+ */
+export function completeIncompleteSource(source: string): string | undefined {
+  const stack: OpenConstruct[] = [];
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '%') {
+      const newline = source.indexOf('\n', index);
+      index = newline < 0 ? source.length : newline + 1;
+      continue;
+    }
+    if (char === '\\') {
+      const command = /^\\(?:[a-zA-Z]+|.)/.exec(source.slice(index))?.[0];
+      if (!command) { index += 1; continue; }
+      if (command === '\\begin' || command === '\\end') {
+        const argument = readEnvironmentName(source, index + command.length);
+        if (argument) {
+          if (command === '\\begin') stack.push({ kind: 'environment', name: argument.name });
+          else {
+            for (let open = stack.length - 1; open >= 0; open -= 1) {
+              const entry = stack[open];
+              if (entry.kind === 'environment' && entry.name === argument.name) {
+                stack.splice(open, 1);
+                break;
+              }
+            }
+          }
+          index = argument.end;
+          continue;
+        }
+      } else if (command === '\\left') {
+        const delimiter = readDelimiter(source, index + command.length);
+        if (delimiter) {
+          stack.push({ kind: 'left', close: rightDelimiters[delimiter.value] ?? '.' });
+          index = delimiter.end;
+          continue;
+        }
+      } else if (command === '\\right') {
+        const delimiter = readDelimiter(source, index + command.length);
+        if (delimiter) {
+          for (let open = stack.length - 1; open >= 0; open -= 1) {
+            if (stack[open].kind === 'left') { stack.splice(open, 1); break; }
+          }
+          index = delimiter.end;
+          continue;
+        }
+      }
+      index += command.length;
+      continue;
+    }
+    if (char === '{') stack.push({ kind: 'brace' });
+    else if (char === '}' && stack.at(-1)?.kind === 'brace') stack.pop();
+    index += 1;
+  }
+
+  // A trailing ^ or _ still needs an argument before any enclosing group closes.
+  const tail = source.trimEnd();
+  let suffix = tail.endsWith('^') || tail.endsWith('_') ? '{}' : '';
+  for (let open = stack.length - 1; open >= 0; open -= 1) {
+    const entry = stack[open];
+    if (entry.kind === 'brace') suffix += '}';
+    else if (entry.kind === 'left') suffix += `\\right${entry.close}`;
+    else suffix += `\\end{${entry.name}}`;
+  }
+  return suffix ? source + suffix : undefined;
 }
 
 const adaptor = liteAdaptor();
@@ -56,4 +164,24 @@ export function renderEquation(source: string, display: boolean): RenderedEquati
     throw new Error('The equation has no visible output.');
   }
   return { svg: adaptor.outerHTML(svgNode), viewBox: viewBox as RenderedEquation['viewBox'], source };
+}
+
+/**
+ * Strict rendering first, then one repair attempt for equations that are still
+ * being typed. Only missing closers are added; real syntax errors still throw.
+ */
+export function renderPreview(source: string, display: boolean): RenderedEquation {
+  try {
+    return renderEquation(source, display);
+  } catch (originalError) {
+    const normalized = normalizeSource(source);
+    if (!normalized || normalized.length > 20000) throw originalError;
+    const completed = completeIncompleteSource(normalized);
+    if (!completed || completed === normalized) throw originalError;
+    try {
+      return { ...renderEquation(completed, display), source, completed };
+    } catch {
+      throw originalError;
+    }
+  }
 }

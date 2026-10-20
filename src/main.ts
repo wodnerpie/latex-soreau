@@ -144,7 +144,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <p>Use <code>\\begin{aligned} … \\end{aligned}</code> for multiple lines, <code>&amp;</code> for alignment, and <code>\\\\</code> for line breaks. AMS math, matrices, cases, colors, and common physics commands are supported.</p>
       <p><kbd>Tab</kbd> accepts a suggestion, then moves through the snippet fields. <kbd>Ctrl</kbd>+<kbd>Space</kbd> lists commands anywhere, including after a partial word like <code>frac</code>. <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back a snippet field, or outdents. <kbd>Esc</kbd> clears a selection, then leaves the editor. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes edits, including loading an example or clearing. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> renders immediately. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> downloads. Use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd> on Mac.</p>
       <p>The editor is Monaco, the same editor as VS Code, with its default shortcuts: <kbd>Ctrl</kbd>+<kbd>A</kbd> selects everything, <kbd>Ctrl</kbd>+<kbd>D</kbd> adds the next matching selection, <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> moves a line, <kbd>Ctrl</kbd>+<kbd>F</kbd> finds, and dragging or double-clicking selects text.</p>
-      <p>Incomplete equation? The last valid preview stays visible, and image downloads use that preview. A compact message explains what to fix. LaTeX downloads and Copy LaTeX always use your current text.</p>
+      <p>Incomplete equation? Missing closing braces, <code>\\right</code> delimiters, and <code>\\end{…}</code> tags are filled in automatically, so the preview follows along while you type. Other syntax errors keep the last valid preview, and a compact message explains what to fix. Image downloads use the preview; LaTeX downloads and Copy LaTeX always use your current text.</p>
       <p>Transparent backgrounds use a checkerboard here; it is never included in downloads. JPG cannot be transparent and uses white instead. Image scale affects raster downloads only; SVG is vector.</p>
       <p>Everything renders locally in your browser. No accounts, analytics, or equation uploads. Copy link includes the equation in the URL fragment; anyone with the link can read it. Links longer than 12,000 characters should be shared as a .tex file instead.</p>
     </div></details>
@@ -304,7 +304,7 @@ function ensureWorker() {
     if (event.data.result) {
       lastGood = event.data.result;
       el('render-error').hidden = true;
-      el('render-status').textContent = 'Up to date';
+      el('render-status').textContent = lastGood.completed ? 'Incomplete equation (auto-closed for preview)' : 'Up to date';
       button('retry').hidden = true;
       updatePreview();
     } else showRenderError(event.data.error || 'Check the equation syntax.');
@@ -456,13 +456,16 @@ function updateExportControls() {
   button('download').textContent = `Download ${format === 'tex' ? '.tex' : format.toUpperCase()}`;
   button('copy-image').disabled = !lastGood;
   button('copy-image').hidden = !('ClipboardItem' in window && navigator.clipboard?.write);
-  el('export-note').textContent = format === 'jpg' && settings.background === 'transparent'
+  const opaqueJpg = format === 'jpg' && settings.background === 'transparent';
+  const completed = Boolean(lastGood?.completed) && format !== 'tex';
+  el('export-note').textContent = opaqueJpg
     ? 'JPG cannot be transparent. This download will have a white background.'
+    : completed ? 'The preview filled in missing closers; this export uses the completed equation.'
     : format === 'svg' ? 'SVG stays sharp at any size.'
     : format === 'tex' ? 'Downloads your current LaTeX source, including unfinished edits.'
     : 'Image scale increases the resolution without changing the equation.';
   // Only surface information that requires attention; general export help stays in the menu.
-  el('export-note').hidden = !(format === 'jpg' && settings.background === 'transparent');
+  el('export-note').hidden = !(opaqueJpg || completed);
   if (lastGood && raster) {
     const size = dimensions(lastGood, settings);
     el('export-size').textContent = `${Math.ceil(size.width * settings.scale)} × ${Math.ceil(size.height * settings.scale)} px`;
@@ -486,7 +489,9 @@ async function exportCurrent() {
         : await imageBlob(equation, options, format as 'png' | 'jpg' | 'webp', options.quality / 100);
       download(blob, `${filename}.${format}`);
     }
-    notice(format !== 'tex' && (pending || equation?.source !== source) ? 'Downloaded the last valid preview.' : 'Download ready.');
+    notice(format !== 'tex' && (pending || equation?.source !== source)
+      ? 'Downloaded the last valid preview.'
+      : equation?.completed && format !== 'tex' ? 'Downloaded the auto-completed preview.' : 'Download ready.');
   } catch (error) { notice(error instanceof Error ? error.message : 'Download failed. Try SVG instead.'); }
   finally { exporting = false; updateExportControls(); }
 }
@@ -511,7 +516,7 @@ button('copy-image').addEventListener('click', async () => {
     // Pass a Promise to preserve the click's user activation in Safari.
     const item = new ClipboardItem({ 'image/png': imageBlob(lastGood, { ...settings }, 'png') });
     await navigator.clipboard.write([item]);
-    notice(stale ? 'Last valid preview copied as PNG.' : 'Image copied as PNG.');
+    notice(stale ? 'Last valid preview copied as PNG.' : lastGood.completed ? 'Auto-completed preview copied as PNG.' : 'Image copied as PNG.');
   } catch (error) { notice(error instanceof Error && error.message.startsWith('Image too large') ? error.message : 'Image clipboard unavailable. Download PNG instead.'); }
   finally { updateExportControls(); }
 });

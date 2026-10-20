@@ -74,7 +74,7 @@ test('keeps secondary controls hidden until their menus are opened', async ({ pa
 
 test('keeps the last good equation on syntax errors, then recovers', async ({ page }) => {
   const svg = await page.locator('#preview').innerHTML();
-  await setSource(page, '\\frac{a}{');
+  await setSource(page, '\\notarealcommand{x}');
   await expect(page.locator('#render-status')).toContainText('Last valid preview');
   await expect(page.locator('#preview')).toHaveJSProperty('innerHTML', svg);
   await expect(page.locator('#render-error')).toBeVisible();
@@ -84,6 +84,24 @@ test('keeps the last good equation on syntax errors, then recovers', async ({ pa
   await setSource(page, 'e^{i\\pi} + 1 = 0');
   await ready(page);
   await expect(page.locator('#render-error')).toBeHidden();
+});
+
+test('previews an incomplete equation by filling in its missing closers', async ({ page }) => {
+  const source = '\\varphi = \\arg{(z)} = \\arctan{\\left( \\frac{X}{R}';
+  await setSource(page, source);
+  await expect(page.locator('#render-status')).toHaveText('Incomplete equation (auto-closed for preview)');
+  await expect(page.locator('#render-error')).toBeHidden();
+  await expect(page.locator('#preview > svg')).toBeVisible();
+  expect(await page.locator('#preview svg path').count()).toBeGreaterThan(0);
+  expect(await getValue(page)).toBe(source);
+  await expect(page.locator('#export-note')).toContainText('filled in missing closers');
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#download').click();
+  const bytes = await readFile((await (await downloadPromise).path())!);
+  expect(bytes.toString()).toContain('<svg');
+  expect(bytes.toString()).toContain('<path');
+  await expect(page.locator('#notice')).toHaveText('Downloaded the auto-completed preview.');
 });
 
 test('exports all formats, including transparent PNG and opaque JPG', async ({ page }) => {

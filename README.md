@@ -2,7 +2,7 @@
 
 Live at **https://latex.soreau.eu**. A small equation editor, not a full LaTeX document compiler.
 
-- Live vector preview; incomplete input never replaces the last valid equation with a large error.
+- Live vector preview; missing closing braces, `\right` delimiters, and `\end{…}` tags are completed for the preview, so half-written equations stay visible. Other errors never replace the last valid equation with a large one.
 - Monaco, the editor from VS Code, with LaTeX highlighting, Tab completion, editable snippets, and the usual shortcuts (select all, drag select, multi-cursor, find, undo).
 - Commands autocomplete after `\`, and `Ctrl+Space` lists them anywhere, including after a bare word like `frac`.
 - JetBrains Mono, self-hosted, for the editor.
@@ -40,7 +40,9 @@ Vite + TypeScript, native HTML controls, Monaco Editor (LaTeX features registere
 
 Monaco is imported as the editor API plus its feature set (`src/monaco-setup.ts`) instead of `editor.main`, which would also ship ~90 language grammars and an LSP client. The editor model uses LF line endings so downloads and share links stay portable. The preview SVG is snapped to whole device pixels after every render and resize, which is what keeps thin fraction bars and glyph edges crisp instead of blurring across a half-pixel boundary.
 
-The worker returns either a successful SVG or a short error. The UI only replaces the preview after a successful render, ignores superseded responses, and labels stale previews explicitly. Image exports use the visible last valid equation; `.tex` exports always use the current source. Display style changes may temporarily leave the previous rendering visible while a new result is pending.
+`renderPreview()` first renders the source exactly as written. If MathJax rejects it, `completeIncompleteSource()` scans the input (skipping comments and escaped braces) and appends the missing `}`, `\right…`, and `\end{…}` closers in nesting order, then tries one more render. That is what keeps `\arctan{\left( \frac{X}{R}` visible while it is still being typed; genuine syntax errors that completion cannot fix keep the previous valid preview. `.tex` exports, Copy LaTeX, and share links always use the current, uncompleted source.
+
+The worker returns either a successful SVG or a short error. The UI only replaces the preview after a successful render, ignores superseded responses, and labels stale previews explicitly. Image exports use the visible preview (including automatic completions); `.tex` exports always use the current source. Display style changes may temporarily leave the previous rendering visible while a new result is pending.
 
 `src/export.ts` controls standalone SVG sizing/colors and canvas image exports. MathJax's `PACKAGE_VERSION` is injected at build time so its Node-only version loader is never executed in browsers or under strict CSP.
 

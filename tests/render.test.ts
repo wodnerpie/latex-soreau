@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeSource, renderEquation } from '../src/render';
+import { completeIncompleteSource, normalizeSource, renderEquation, renderPreview } from '../src/render';
 import { buildSvg, dimensions } from '../src/export';
 import { examples, templates } from '../src/templates';
 
@@ -37,6 +37,48 @@ describe('equation rendering', () => {
   });
   it.each(['\\href{javascript:alert(1)}{x}', '\\htmlClass{test}{x}', '\\require{html}'])('disables HTML and external links: %s', source => {
     expect(() => renderEquation(source, true)).toThrow();
+  });
+});
+
+describe('incomplete equation previews', () => {
+  const example = '\\varphi = \\arg{(z)} = \\arctan{\\left( \\frac{X}{R}';
+  it('closes braces, \\left delimiters, and environments in the right order', () => {
+    expect(completeIncompleteSource(example)).toBe(`${example}\\right)}`);
+    expect(completeIncompleteSource('\\frac{a}{')).toBe('\\frac{a}{}');
+    expect(completeIncompleteSource('\\left( x')).toBe('\\left( x\\right)');
+    expect(completeIncompleteSource('\\left\\{ x')).toBe('\\left\\{ x\\right\\}');
+    expect(completeIncompleteSource('\\left\\langle x')).toBe('\\left\\langle x\\right\\rangle');
+    expect(completeIncompleteSource('\\left( \\frac{a}{b')).toBe('\\left( \\frac{a}{b}\\right)');
+    expect(completeIncompleteSource('\\arctan{\\left( \\frac{X}{R')).toBe('\\arctan{\\left( \\frac{X}{R}\\right)}');
+    expect(completeIncompleteSource('\\begin{pmatrix}a & b')).toBe('\\begin{pmatrix}a & b\\end{pmatrix}');
+    const lineBreak = '\\\\';
+    expect(completeIncompleteSource(`\\begin{aligned} a &= b ${lineBreak}`)).toBe(`\\begin{aligned} a &= b ${lineBreak}\\end{aligned}`);
+    expect(completeIncompleteSource('\\frac{\\begin{matrix}a')).toBe('\\frac{\\begin{matrix}a\\end{matrix}}');
+    expect(completeIncompleteSource('x^')).toBe('x^{}');
+  });
+  it('leaves complete input and comments alone', () => {
+    expect(completeIncompleteSource('\\frac{a}{b}')).toBeUndefined();
+    expect(completeIncompleteSource('\\left( x \\right)')).toBeUndefined();
+    expect(completeIncompleteSource('\\begin{matrix}a\\end{matrix}')).toBeUndefined();
+    expect(completeIncompleteSource('a % }')).toBeUndefined();
+    expect(completeIncompleteSource('\\text{100\\%}')).toBeUndefined();
+  });
+  it('renders the example with the completions but keeps the original source', () => {
+    const result = renderPreview(example, true);
+    expect(result.source).toBe(example);
+    expect(result.completed).toBe(`${example}\\right)}`);
+    expect(result.svg).toContain('<path');
+    expect(result.svg).not.toContain('data-mml-node="merror"');
+    expect(result.viewBox[2]).toBeGreaterThan(0);
+    expect(result.viewBox[3]).toBeGreaterThan(0);
+  });
+  it('still reports syntax errors that completion cannot fix', () => {
+    expect(() => renderPreview('\\notarealcommand{x}', true)).toThrow(/Undefined control sequence/);
+    expect(() => renderPreview('\\frac{a}{b}}', true)).toThrow();
+    expect(() => renderPreview('\\begin{pmatrix}a\\end{aligned}', true)).toThrow();
+  });
+  it('leaves the strict renderer unchanged', () => {
+    expect(() => renderEquation(example, true)).toThrow();
   });
 });
 
