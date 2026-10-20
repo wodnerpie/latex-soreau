@@ -54,11 +54,13 @@ async function sourceAction(page: Page, id: string) {
 }
 
 test('keeps secondary controls hidden until their menus are opened', async ({ page }) => {
-  for (const id of ['#category', '#examples', '#ink-preset', '#display', '#scale', '#filename', '#theme', '#save-draft', '#clear', '#copy-image']) {
+  for (const id of ['#category', '#examples', '#ink-preset', '#display', '#scale', '#filename', '#theme', '#save-draft', '#clear']) {
     await expect(page.locator(id)).toBeHidden();
   }
   await expect(page.locator('#format')).toBeVisible();
   await expect(page.locator('#download')).toBeVisible();
+  await expect(page.locator('#copy-image')).toBeVisible();
+  await expect(page.locator('#copy-image')).toBeEnabled();
   await openMenu(page, '#insert-tools');
   await expect(page.locator('#category')).toBeVisible();
   await page.locator('#preferences > summary').click();
@@ -138,6 +140,55 @@ test('exports all formats, including transparent PNG and opaque JPG', async ({ p
       else expect(pixels.corner[3]).toBe(0);
     }
   }
+});
+
+test('copies a PNG with the current appearance and image scale', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openMenu(page, '#appearance-options');
+  await page.locator('#ink-preset').selectOption('#ffffff');
+  await page.locator('#background-preset').selectOption('#000000');
+  await page.locator('#font-size').fill('40');
+  await page.locator('#padding').fill('20');
+  await openMenu(page, '#export-options');
+  await page.locator('#scale').selectOption('4');
+  await expect(page.locator('#preview svg')).toHaveAttribute('color', '#ffffff');
+  const previewSize = await page.locator('#preview svg').evaluate(svg => ({
+    width: Number(svg.getAttribute('width')),
+    height: Number(svg.getAttribute('height')),
+  }));
+  await page.locator('#copy-image').click();
+  await expect(page.locator('#notice')).toHaveText('Image copied as PNG.');
+  const png = await page.evaluate(async () => {
+    for (const item of await navigator.clipboard.read()) {
+      if (!item.types.includes('image/png')) continue;
+      const bytes = new Uint8Array(await (await item.getType('image/png')).arrayBuffer());
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    }
+    return null;
+  });
+  expect(png).not.toBeNull();
+  const copied = await page.evaluate(async data => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${data}`;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(image, 0, 0);
+    const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
+    let lightInk = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i + 3] > 200 && pixels[i] > 240 && pixels[i + 1] > 240 && pixels[i + 2] > 240) lightInk++;
+    }
+    return { width: image.width, height: image.height, corner: Array.from(pixels.slice(0, 4)), lightInk };
+  }, png!);
+  expect(copied.width).toBe(Math.ceil(previewSize.width * 4));
+  expect(copied.height).toBe(Math.ceil(previewSize.height * 4));
+  expect(copied.corner).toEqual([0, 0, 0, 255]);
+  expect(copied.lightInk).toBeGreaterThan(20);
 });
 
 test('supports white equations, black backgrounds, scale, and padding', async ({ page }) => {
@@ -370,5 +421,6 @@ test('empty source disables downloads and unknown commands do not erase preview'
   await expect(page.locator('#preview svg')).toBeVisible();
   await sourceAction(page, '#clear');
   await expect(page.locator('#download')).toBeDisabled();
+  await expect(page.locator('#copy-image')).toBeDisabled();
   await expect(page.locator('#preview svg')).toHaveCount(0);
 });

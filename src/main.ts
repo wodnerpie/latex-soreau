@@ -110,6 +110,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="download-actions">
           <label for="format" class="sr-only">Format</label><select id="format"><option value="svg">SVG (vector)</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="webp">WebP</option><option value="tex">LaTeX (.tex)</option></select>
           <button id="download" class="primary" type="button" disabled>Download SVG</button>
+          <button id="copy-image" type="button" title="Copy a PNG using the current appearance and image scale" disabled>Copy image</button>
         </div>
         <p id="export-note" class="hint" hidden>SVG stays sharp at any size.</p>
         <div class="preview-options">
@@ -132,8 +133,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           </div>
           <div id="quality-control" class="quality-control" hidden><label for="quality">Quality <output id="quality-value">95%</output></label><input id="quality" type="range" min="10" max="100" value="95" /></div>
           <div class="export-info hint"><span id="size-info"></span><span id="export-size"></span></div>
-          <p class="hint">Image scale affects PNG, JPG, and WebP only. SVG stays sharp at any size.</p>
-          <button id="copy-image" type="button" disabled>Copy image</button>
+          <p class="hint">Image scale affects PNG, JPG, WebP, and Copy image. SVG stays sharp at any size.</p>
         </div>
         </details>
         </div>
@@ -144,8 +144,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <p>Use <code>\\begin{aligned} … \\end{aligned}</code> for multiple lines, <code>&amp;</code> for alignment, and <code>\\\\</code> for line breaks. AMS math, matrices, cases, colors, and common physics commands are supported.</p>
       <p><kbd>Tab</kbd> accepts a suggestion, then moves through the snippet fields. <kbd>Ctrl</kbd>+<kbd>Space</kbd> lists commands anywhere, including after a partial word like <code>frac</code>. <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back a snippet field, or outdents. <kbd>Esc</kbd> clears a selection, then leaves the editor. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes edits, including loading an example or clearing. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> renders immediately. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> downloads. Use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd> on Mac.</p>
       <p>The editor is Monaco, the same editor as VS Code, with its default shortcuts: <kbd>Ctrl</kbd>+<kbd>A</kbd> selects everything, <kbd>Ctrl</kbd>+<kbd>D</kbd> adds the next matching selection, <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> moves a line, <kbd>Ctrl</kbd>+<kbd>F</kbd> finds, and dragging or double-clicking selects text.</p>
-      <p>Incomplete equation? Missing closing braces, <code>\\right</code> delimiters, and <code>\\end{…}</code> tags are filled in automatically, so the preview follows along while you type. Other syntax errors keep the last valid preview, and a compact message explains what to fix. Image downloads use the preview; LaTeX downloads and Copy LaTeX always use your current text.</p>
-      <p>Transparent backgrounds use a checkerboard here; it is never included in downloads. JPG cannot be transparent and uses white instead. Image scale affects raster downloads only; SVG is vector.</p>
+      <p>Incomplete equation? Missing closing braces, <code>\\right</code> delimiters, and <code>\\end{…}</code> tags are filled in automatically, so the preview follows along while you type. Other syntax errors keep the last valid preview, and a compact message explains what to fix. Image downloads and Copy image use the preview; LaTeX downloads and Copy LaTeX always use your current text.</p>
+      <p>Transparent backgrounds use a checkerboard here; it is never included in downloads. JPG cannot be transparent and uses white instead. Image scale affects raster images, including Copy image; SVG is vector.</p>
       <p>Everything renders locally in your browser. No accounts, analytics, or equation uploads. Copy link includes the equation in the URL fragment; anyone with the link can read it. Links longer than 12,000 characters should be shared as a .tex file instead.</p>
     </div></details>
   </main>
@@ -450,7 +450,6 @@ input('quality').addEventListener('input', () => { settings.quality = Number(inp
 function updateExportControls() {
   const format = settings.format;
   const raster = ['png', 'jpg', 'webp'].includes(format);
-  select('scale').disabled = !raster;
   el('quality-control').hidden = !['jpg', 'webp'].includes(format);
   button('download').disabled = format === 'tex' ? !source.trim() : !lastGood;
   button('download').textContent = `Download ${format === 'tex' ? '.tex' : format.toUpperCase()}`;
