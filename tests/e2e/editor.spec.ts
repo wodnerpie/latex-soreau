@@ -335,6 +335,39 @@ test('share links restore unicode source and appearance without network uploads'
   await freshContext.close();
 });
 
+test('spaces accented characters using their actual glyph widths in preview and exports', async ({ page }) => {
+  for (const command of ['text', 'textbf', 'textit', 'textsf', 'texttt']) {
+    const source = `\\${command}{éxèxêxëxàxâxùxûxüxôxöxïxîxçxÉxÙxœx}`;
+    await setSource(page, source);
+    await ready(page);
+    const checkSpacing = () => {
+      const svg = document.querySelector('#preview > svg') as SVGSVGElement;
+      return Array.from(svg.querySelectorAll('text')).map(text => {
+        const next = text.nextElementSibling as SVGGraphicsElement;
+        const start = text.transform.baseVal.consolidate()!.matrix.e;
+        const end = next.transform.baseVal.consolidate()!.matrix.e;
+        return { char: text.textContent, error: Math.abs(end - start - text.getComputedTextLength()) };
+      });
+    };
+    const measurements = await page.evaluate(checkSpacing);
+    expect(measurements.length).toBeGreaterThan(10);
+    for (const { char, error } of measurements) {
+      expect(error, `${command}: spacing after ${char}`).toBeLessThan(1);
+    }
+
+    // SVG downloads must preserve the same measured advances, not just a
+    // browser-only adjustment to the on-screen preview.
+    const promise = page.waitForEvent('download');
+    await page.locator('#download').click();
+    const bytes = await readFile((await (await promise).path())!);
+    await page.locator('#preview').evaluate((preview, svg) => { preview.innerHTML = svg; }, bytes.toString());
+    for (const { char, error } of await page.evaluate(checkSpacing)) {
+      expect(error, `${command}: exported spacing after ${char}`).toBeLessThan(1);
+    }
+    expect(await getValue(page)).toBe(source);
+  }
+});
+
 test('uses the self-hosted JetBrains Mono font in the editor', async ({ page }) => {
   const loaded = await page.evaluate(async () => {
     await document.fonts.load('15px "JetBrains Mono"');

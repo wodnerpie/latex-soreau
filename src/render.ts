@@ -1,6 +1,6 @@
 import { mathjax } from 'mathjax-full/js/mathjax.js';
 import { TeX } from 'mathjax-full/js/input/tex.js';
-import { SVG } from 'mathjax-full/js/output/svg.js';
+import { MeasuredSVG } from './svg';
 import { liteAdaptor } from 'mathjax-full/js/adaptors/liteAdaptor.js';
 import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
 import 'mathjax-full/js/input/tex/ams/AmsConfiguration.js';
@@ -155,7 +155,7 @@ export function renderEquation(source: string, display: boolean): RenderedEquati
     // MathJax's TeXError has a message but does not inherit from JavaScript Error.
     formatError: (_jax: unknown, error: { message: string }) => { throw new Error(error.message); },
   });
-  const doc = mathjax.document('', { InputJax: tex, OutputJax: new SVG({ fontCache: 'none' }) });
+  const doc = mathjax.document('', { InputJax: tex, OutputJax: new MeasuredSVG({ fontCache: 'none' }) });
   const node = doc.convert(normalized, { display, em: 16, ex: 8, containerWidth: 100000 });
   const svgNode = adaptor.tags(node, 'svg')[0];
   if (!svgNode) throw new Error('Could not render this equation.');
