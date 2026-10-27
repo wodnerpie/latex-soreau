@@ -142,6 +142,48 @@ export function normalizeSource(source: string): string {
   return value;
 }
 
+/** Only bare breaks need a layout; nested environments already handle theirs. */
+function hasTopLevelLineBreak(source: string): boolean {
+  let braces = 0;
+  let environments = 0;
+  let delimiters = 0;
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '%') {
+      const newline = source.indexOf('\n', index);
+      index = newline < 0 ? source.length : newline + 1;
+      continue;
+    }
+    if (char === '\\') {
+      const command = /^\\(?:[a-zA-Z]+|.)/.exec(source.slice(index))?.[0];
+      if (!command) { index += 1; continue; }
+      if ((command === '\\\\' || command === '\\newline') && !braces && !environments && !delimiters) return true;
+      if (command === '\\begin' || command === '\\end') {
+        const argument = readEnvironmentName(source, index + command.length);
+        if (argument) {
+          environments += command === '\\begin' ? 1 : -1;
+          index = argument.end;
+          continue;
+        }
+      } else if (command === '\\left' || command === '\\right') {
+        const delimiter = readDelimiter(source, index + command.length);
+        if (delimiter) {
+          delimiters += command === '\\left' ? 1 : -1;
+          index = delimiter.end;
+          continue;
+        }
+      }
+      index += command.length;
+      continue;
+    }
+    if (char === '{') braces += 1;
+    else if (char === '}') braces -= 1;
+    index += 1;
+  }
+  return false;
+}
+
 export function renderEquation(source: string, display: boolean): RenderedEquation {
   const normalized = normalizeSource(source);
   if (!normalized) throw new Error('Write an equation to see its preview.');
@@ -156,7 +198,14 @@ export function renderEquation(source: string, display: boolean): RenderedEquati
     formatError: (_jax: unknown, error: { message: string }) => { throw new Error(error.message); },
   });
   const doc = mathjax.document('', { InputJax: tex, OutputJax: new MeasuredSVG({ fontCache: 'none' }) });
-  const node = doc.convert(normalized, { display, em: 16, ex: 8, containerWidth: 100000 });
+  // MathJax 3's SVG output ignores bare newline mspaces. Give explicit top-level
+  // breaks a native row layout instead, retaining optional \\[spacing] arguments.
+  // Matrix uses text style for inline mode; gathered preserves display style.
+  // The newline protects the appended end tag from a trailing TeX comment.
+  const environment = display ? 'gathered' : 'matrix';
+  const input = hasTopLevelLineBreak(normalized)
+    ? `\\begin{${environment}}${normalized}\n\\end{${environment}}` : normalized;
+  const node = doc.convert(input, { display, em: 16, ex: 8, containerWidth: 100000 });
   const svgNode = adaptor.tags(node, 'svg')[0];
   if (!svgNode) throw new Error('Could not render this equation.');
   const viewBox: number[] | undefined = (adaptor.getAttribute(svgNode, 'viewBox') as string | undefined)?.split(/\s+/).map(Number);

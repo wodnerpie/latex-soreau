@@ -40,6 +40,63 @@ describe('equation rendering', () => {
   });
 });
 
+describe('explicit line breaks', () => {
+  it.each([true, false])('lays out bare line breaks as rows (display: %s)', display => {
+    const source = String.raw`a = b \\ c = d \\ e = f`;
+    const result = renderEquation(source, display);
+    const environment = display ? 'gathered' : 'matrix';
+    const expected = renderEquation(`\\begin{${environment}}${source}\\end{${environment}}`, display);
+    expect(result.svg).toBe(expected.svg);
+    expect(result.svg.match(/data-mml-node="mtr"/g)).toHaveLength(3);
+    expect(result.viewBox[3]).toBeGreaterThan(renderEquation('a = b', display).viewBox[3] * 2);
+    expect(result.source).toBe(source);
+  });
+  it.each([String.raw`a \\[1em] b`, String.raw`a \\*[1em] b`, String.raw`a \newline b`])('keeps native row spacing and break syntax: %s', source => {
+    expect(renderEquation(source, true).svg).toBe(renderEquation(`\\begin{gathered}${source}\\end{gathered}`, true).svg);
+  });
+  it('accepts outer math delimiters and a trailing comment', () => {
+    const result = renderEquation(String.raw`$$a \\ b % keep this comment$$`, true);
+    expect(result.svg.match(/data-mml-node="mtr"/g)).toHaveLength(2);
+  });
+  it.each([
+    String.raw`\begin{aligned}a &= b \\ c &= d\end{aligned}`,
+    String.raw`\begin{pmatrix}a & b \\ c & d\end{pmatrix}`,
+    String.raw`\frac{\begin{matrix}a \\ b\end{matrix}}{c}`,
+    String.raw`\left(\begin{matrix}a \\ b\end{matrix}\right)`,
+  ])('does not add a table around existing nested layouts: %s', source => {
+    expect(renderEquation(source, true).svg.match(/data-mml-node="mtable"/g)).toHaveLength(1);
+  });
+  it('ignores comments and escaped backslashes when detecting breaks', () => {
+    expect(renderEquation('a % \\\\ ignored', true).svg).not.toContain('data-mml-node="mtable"');
+    expect(renderEquation(String.raw`\text{a \\ b}`, true).svg).not.toContain('data-mml-node="mtable"');
+    expect(renderEquation(String.raw`\backslash\backslash`, true).svg).not.toContain('data-mml-node="mtable"');
+    expect(renderEquation('a\nb', true).svg).toBe(renderEquation('a b', true).svg);
+  });
+  it.each([true, false])('preserves math style across rows (display: %s)', display => {
+    const source = String.raw`\sum_{i=0}^n i \\ \frac{a}{b}`;
+    const environment = display ? 'gathered' : 'matrix';
+    expect(renderEquation(source, display).svg).toBe(renderEquation(`\\begin{${environment}}${source}\\end{${environment}}`, display).svg);
+  });
+  it('recognizes a break after escaped braces and comments', () => {
+    const source = String.raw`\{a\} % \begin{matrix} { \left(
+\\ b`;
+    expect(renderEquation(source, true).svg.match(/data-mml-node="mtr"/g)).toHaveLength(2);
+  });
+  it('keeps nested rows separate from outer rows', () => {
+    const source = String.raw`\begin{pmatrix}a \\ b\end{pmatrix} \\ c`;
+    const result = renderEquation(source, true);
+    expect(result.svg.match(/data-mml-node="mtable"/g)).toHaveLength(2);
+    expect(result.svg.match(/data-mml-node="mtr"/g)).toHaveLength(4);
+  });
+  it('also lays out incomplete multiline previews without modifying their source', () => {
+    const source = String.raw`a = b \\ \frac{c}{`;
+    const result = renderPreview(source, true);
+    expect(result.svg.match(/data-mml-node="mtr"/g)).toHaveLength(2);
+    expect(result.source).toBe(source);
+    expect(result.completed).toBe(source + '}');
+  });
+});
+
 describe('incomplete equation previews', () => {
   const example = '\\varphi = \\arg{(z)} = \\arctan{\\left( \\frac{X}{R}';
   it('closes braces, \\left delimiters, and environments in the right order', () => {

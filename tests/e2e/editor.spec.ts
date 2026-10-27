@@ -106,6 +106,28 @@ test('previews an incomplete equation by filling in its missing closers', async 
   await expect(page.locator('#notice')).toHaveText('Downloaded the auto-completed preview.');
 });
 
+test('renders bare line breaks in the preview and SVG export while keeping TeX unchanged', async ({ page }) => {
+  const source = String.raw`a = b \\ c = d \\ e = f`;
+  await setSource(page, source);
+  await ready(page);
+  const rows = page.locator('#preview svg [data-mml-node="mtr"]');
+  await expect(rows).toHaveCount(3);
+  const boxes = await rows.evaluateAll(elements => elements.map(el => el.getBoundingClientRect().toJSON()));
+  expect(boxes[1].top).toBeGreaterThan(boxes[0].bottom);
+  expect(boxes[2].top).toBeGreaterThan(boxes[1].bottom);
+  expect(await getValue(page)).toBe(source);
+  await expect(page.locator('#render-error')).toBeHidden();
+
+  for (const format of ['svg', 'tex']) {
+    await page.locator('#format').selectOption(format);
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#download').click();
+    const bytes = await readFile((await (await downloadPromise).path())!);
+    if (format === 'svg') expect(bytes.toString().match(/data-mml-node="mtr"/g)).toHaveLength(3);
+    else expect(bytes.toString()).toBe(source);
+  }
+});
+
 test('exports all formats, including transparent PNG and opaque JPG', async ({ page }) => {
   for (const format of ['svg', 'png', 'jpg', 'webp', 'tex']) {
     await page.locator('#format').selectOption(format);
