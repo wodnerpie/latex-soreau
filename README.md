@@ -5,6 +5,7 @@ Live at **https://latex.soreau.eu**. A small equation editor, not a full LaTeX d
 - Live vector preview; missing closing braces, `\right` delimiters, and `\end{…}` tags are completed for the preview, so half-written equations stay visible. Other errors never replace the last valid equation with a large one.
 - Monaco, the editor from VS Code, with LaTeX highlighting, Tab completion, editable snippets, and the usual shortcuts (select all, drag select, multi-cursor, find, undo).
 - Commands autocomplete after `\`, and `Ctrl+Space` lists them anywhere, including after a bare word like `frac`.
+- Keyboard math while typing: `/` turns the expression before it into a fraction, `*` becomes ×, and `<=`, `>=`, `!=`, `->`, `=>`, `...` become ≤, ≥, ≠, →, ⇒, …. These stay literal in `\text{…}` and comments and can be switched off in Settings.
 - JetBrains Mono, self-hosted, for the editor.
 - SVG, PNG, JPG, WebP, and raw `.tex` exports; copy source or PNG to the clipboard.
 - Black, white, or custom equation/background colors; transparency; font size, padding, image scale, and JPEG/WebP quality.
@@ -38,6 +39,8 @@ SITE_URL=https://latex.soreau.eu npm run test:e2e
 
 Vite + TypeScript, native HTML controls, Monaco Editor (LaTeX features registered in `src/editor.ts`), and MathJax 3's TeX-to-SVG renderer in a dedicated web worker. SVG exports contain glyph paths and do not depend on installed fonts. Raster exports use browser canvas, with dimension/memory limits. Only the TeX packages listed in `src/render.ts` are enabled; dynamic package loading, HTML, and URL commands are disabled. Macro/input limits and a worker watchdog contain expensive or recursive expressions.
 
+`src/shortcuts.ts` turns keyboard math into source LaTeX while typing: `/` wraps the expression before it in a fraction, `*` becomes `\times`, and common comparison/arrow spellings become their symbols. It reads backwards without crossing a binary operator, so `2x/3` and `f(x)/2` keep their whole numerator. The editor remembers the empty denominators it opens; an arithmetic or comparison operator typed after filling one continues outside the fraction instead of growing the denominator. Shortcuts never apply inside `\text{…}`, `\operatorname{…}`, or comments, and pasted text is left exactly as pasted.
+
 Monaco is imported as the editor API plus its feature set (`src/monaco-setup.ts`) instead of `editor.main`, which would also ship ~90 language grammars and an LSP client. The editor model uses LF line endings so downloads and share links stay portable. The preview SVG is snapped to whole device pixels after every render and resize, which is what keeps thin fraction bars and glyph edges crisp instead of blurring across a half-pixel boundary.
 
 `renderPreview()` first renders the source exactly as written. If MathJax rejects it, `completeIncompleteSource()` scans the input (skipping comments and escaped braces) and appends the missing `}`, `\right…`, and `\end{…}` closers in nesting order, then tries one more render. That is what keeps `\arctan{\left( \frac{X}{R}` visible while it is still being typed; genuine syntax errors that completion cannot fix keep the previous valid preview. `.tex` exports, Copy LaTeX, and share links always use the current, uncompleted source.
@@ -51,6 +54,7 @@ The worker returns either a successful SVG or a short error. The UI only replace
 ### Limitations
 
 - MathJax supports mathematical LaTeX, not document preambles, arbitrary packages, or full `.tex` documents.
+- Keyboard-math shortcuts apply while typing; pasted text is left exactly as pasted.
 - JPG cannot have an alpha channel; transparent JPG exports use white (the interface warns you).
 - `\\unicode` or text characters outside MathJax's math fonts can rely on system fonts; standard math glyphs export as paths.
 - Clipboard image support depends on the browser; PNG download is the fallback.
@@ -59,10 +63,10 @@ The worker returns either a successful SVG or a short error. The UI only replace
 
 ## Deployment
 
-The VPS uses the existing `coolify-proxy` Traefik instance and external Docker network `coolify`. The site has its own Compose project in `/opt/latex-soreau`, with no published host ports. Traefik routes `latex.soreau.eu` to port 8080 and obtains/renews the Let's Encrypt certificate. No changes to the shared proxy configuration are required.
+The VPS uses the existing `coolify-proxy` Traefik instance and external Docker network `coolify`. The site has its own Compose project in `/srv/soreau.eu/apps/latex`, with no published host ports. Traefik routes `latex.soreau.eu` to port 8080 and obtains/renews the Let's Encrypt certificate. No changes to the shared proxy configuration are required. Read `/srv/soreau.eu/AGENTS.md` for shared organization and service lifecycle rules.
 
 ```sh
-# In a checked-out copy at /opt/latex-soreau on the VPS:
+# In the canonical checkout at /srv/soreau.eu/apps/latex on the VPS:
 docker compose up -d --build
 docker compose ps
 docker compose logs --tail=50
@@ -74,8 +78,8 @@ To deploy from this workstation without installing GitHub credentials on the VPS
 
 ```sh
 git archive --format=tar.gz -o latex-soreau.tar.gz HEAD
-scp latex-soreau.tar.gz root@141.94.78.227:/opt/latex-soreau/source.tar.gz
-ssh root@141.94.78.227 'cd /opt/latex-soreau && tar -xzf source.tar.gz && docker compose up -d --build'
+scp latex-soreau.tar.gz root@141.94.78.227:/srv/soreau.eu/apps/latex/source.tar.gz
+ssh root@141.94.78.227 'cd /srv/soreau.eu/apps/latex && tar -xzf source.tar.gz && docker compose up -d --build'
 ```
 
 Keep the previous image tagged before updating if you need image-level rollback. CI checks builds, renderer/export tests, and Chromium user workflows; deployments are explicit rather than automatic.

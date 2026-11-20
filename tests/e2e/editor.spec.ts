@@ -238,6 +238,64 @@ test('supports white equations, black backgrounds, scale, and padding', async ({
   expect(corner).toEqual([0, 0, 0, 255]);
 });
 
+test('turns keyboard math signs into LaTeX while typing', async ({ page }) => {
+  await setSource(page, '');
+  await page.keyboard.type('1/2');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2}');
+  await ready(page);
+  expect(await page.locator('#preview svg [data-mml-node="mfrac"]').count()).toBeGreaterThan(0);
+
+  await setSource(page, '');
+  await page.keyboard.type('a*b');
+  await expect.poll(() => getValue(page)).toBe('a\\times b');
+
+  await setSource(page, '');
+  await page.keyboard.type('x<=y');
+  await expect.poll(() => getValue(page)).toBe('x\\le y');
+
+  await setSource(page, '');
+  await page.keyboard.type('f->g');
+  await expect.poll(() => getValue(page)).toBe('f\\to g');
+
+  await setSource(page, '');
+  await page.keyboard.type('\\text{a/b}');
+  await expect.poll(() => getValue(page)).toBe('\\text{a/b}');
+});
+
+test('exits a shortcut fraction when an operator follows', async ({ page }) => {
+  await setSource(page, '');
+  await page.keyboard.type('1/2+3');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2}+3');
+
+  await setSource(page, '');
+  await page.keyboard.type('1/2*3');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2}\\times 3');
+
+  await setSource(page, '');
+  await page.keyboard.type('1/2/3');
+  await expect.poll(() => getValue(page)).toBe('\\frac{\\frac{1}{2}}{3}');
+
+  await setSource(page, '');
+  await page.keyboard.type('1/-2');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{-2}');
+
+  await setSource(page, '');
+  await page.keyboard.type('1/2=3');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2}=3');
+
+  await setSource(page, '');
+  await page.keyboard.type('1/(2+3)');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{(2+3)}');
+});
+
+test('keyboard math shortcuts can be turned off', async ({ page }) => {
+  await openMenu(page, '#preferences');
+  await page.locator('#keyboard-math').uncheck();
+  await setSource(page, '');
+  await page.keyboard.type('a/b * c');
+  await expect.poll(() => getValue(page)).toBe('a/b * c');
+});
+
 test('selects all, highlights the selection, and replaces it by typing', async ({ page }) => {
   await setSource(page, 'x + y = z');
   await ready(page);

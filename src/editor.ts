@@ -5,6 +5,7 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/700.css';
 import '@fontsource/jetbrains-mono/400-italic.css';
 import { templates } from './templates';
+import { keyboardMathEdit, type ShortcutEdit } from './shortcuts';
 
 const LATEX = 'latex';
 export const EDITOR_FONT = '"JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace';
@@ -242,6 +243,7 @@ export async function loadEditorFont(): Promise<void> {
 export interface EditorOptions {
   value: string;
   dark: boolean;
+  keyboardMath(): boolean;
   onInput(value: string): void;
   onRenderRequest(): void;
   onDownloadRequest(): void;
@@ -286,7 +288,105 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
     contextmenu: true,
   });
 
-  editor.onDidChangeModelContent(() => options.onInput(editor.getValue()));
+  let applying = false;
+  // Cursor offsets inside denominators created by the `/` shortcut. Typing an
+  // operator there moves the operator past the fraction instead of growing the
+  // denominator: 1/2+3 should mean 1/2 + 3, not 1/(2+3).
+  const autoDenominators = new Set<number>();
+  const autoExitCharacters = new Set(['+', '-', '=', '<', '>', '&', '*', '/']);
+
+  const trackChange = (change: monaco.editor.IModelContentChange) => {
+    const delta = change.text.length - change.rangeLength;
+    const start = change.rangeOffset;
+    const end = start + change.rangeLength;
+    for (const offset of [...autoDenominators]) {
+      autoDenominators.delete(offset);
+      if (end <= offset && start < offset) {
+        autoDenominators.add(offset + delta);
+      } else if (start >= offset) {
+        if (start === offset) {
+          if (change.rangeLength === 0) autoDenominators.add(offset + change.text.length);
+        } else {
+          autoDenominators.add(offset);
+        }
+      }
+      // A change spanning the tracked position removed the fragment; drop it.
+    }
+  };
+
+  const applyShortcut = (edit: ShortcutEdit, trackDenominator: boolean) => {
+    const model = editor.getModel();
+    if (!model) return false;
+    const from = model.getPositionAt(edit.start);
+    const to = model.getPositionAt(edit.end);
+    applying = true;
+    try {
+      const applied = editor.executeEdits('keyboard-math', [{
+        range: new monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column),
+        text: edit.text,
+        forceMoveMarkers: true,
+      }]);
+      if (applied) {
+        const cursor = model.getPositionAt(edit.cursor);
+        editor.setPosition(cursor);
+        if (trackDenominator) autoDenominators.add(edit.cursor);
+      }
+      editor.pushUndoStop();
+      return applied;
+    } finally {
+      applying = false;
+    }
+  };
+
+  editor.onDidChangeModelContent(event => {
+    options.onInput(editor.getValue());
+    const change = event.changes.length === 1 ? event.changes[0] : undefined;
+    const typed = change?.text;
+    const shortcut = !applying && !event.isUndoing && !event.isRedoing && typed?.length === 1
+      ? typed : undefined;
+    const tracked = shortcut !== undefined && change !== undefined && autoDenominators.has(change.rangeOffset);
+
+    if (event.isUndoing || event.isRedoing) autoDenominators.clear();
+    else if (change) trackChange(change);
+    else autoDenominators.clear();
+
+    if (!options.keyboardMath()) return;
+    if (shortcut !== undefined && tracked && change && change.rangeLength === 0 && autoExitCharacters.has(shortcut)) {
+      const source = editor.getValue();
+      const offset = change.rangeOffset;
+      // Keep a leading minus inside an empty denominator (1/-2) and only exit
+      // once the denominator has content (1/2+3).
+      if (source[offset] === shortcut && source[offset + 1] === '}' && source[offset - 1] !== '{') {
+        const model = editor.getModel();
+        if (!model) return;
+        const from = model.getPositionAt(offset);
+        const to = model.getPositionAt(offset + 2);
+        applying = true;
+        try {
+          editor.executeEdits('keyboard-math-exit', [{
+            range: new monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column),
+            text: `}${shortcut}`,
+            forceMoveMarkers: true,
+          }]);
+          const cursor = model.getPositionAt(offset + 2);
+          editor.setPosition(cursor);
+        } finally {
+          applying = false;
+        }
+        if (shortcut === '*' || shortcut === '/') {
+          const next = keyboardMathEdit(editor.getValue(), offset + 2);
+          if (next) applyShortcut(next, shortcut === '/');
+        }
+        editor.pushUndoStop();
+        return;
+      }
+    }
+
+    if (applying || event.isUndoing || event.isRedoing || change?.text.length !== 1) return;
+    const edit = keyboardMathEdit(editor.getValue(), change.rangeOffset + change.text.length);
+    if (!edit) return;
+    applyShortcut(edit, edit.text.startsWith('\\frac{'));
+  });
   // Keep one line-ending style so downloads, share links, and diffs stay portable.
   editor.getModel()?.setEOL(monaco.editor.EndOfLineSequence.LF);
   // If any face loads later (a text subset, a slow retry), re-measure so
@@ -312,7 +412,13 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
     setValue: value => {
       const model = editor.getModel();
       if (!model) return;
-      model.setValue(value);
+      autoDenominators.clear();
+      applying = true;
+      try {
+        model.setValue(value);
+      } finally {
+        applying = false;
+      }
       // Leave the cursor where a person would be after typing, at the end.
       const lastLine = model.getLineCount();
       editor.setPosition({ lineNumber: lastLine, column: model.getLineMaxColumn(lastLine) });
@@ -320,9 +426,15 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
     replaceAll(value) {
       const model = editor.getModel();
       if (!model) return;
-      editor.pushUndoStop();
-      editor.executeEdits('replace-all', [{ range: model.getFullModelRange(), text: value, forceMoveMarkers: true }]);
-      editor.pushUndoStop();
+      autoDenominators.clear();
+      applying = true;
+      try {
+        editor.pushUndoStop();
+        editor.executeEdits('replace-all', [{ range: model.getFullModelRange(), text: value, forceMoveMarkers: true }]);
+        editor.pushUndoStop();
+      } finally {
+        applying = false;
+      }
       const lastLine = model.getLineCount();
       editor.setPosition({ lineNumber: lastLine, column: model.getLineMaxColumn(lastLine) });
     },
@@ -345,7 +457,12 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
         }
       }
       editor.pushUndoStop();
-      editor.executeEdits('insert-template', [{ range: selection, text: insertion, forceMoveMarkers: true }]);
+      applying = true;
+      try {
+        editor.executeEdits('insert-template', [{ range: selection, text: insertion, forceMoveMarkers: true }]);
+      } finally {
+        applying = false;
+      }
       editor.pushUndoStop();
       const from = model.getPositionAt(startOffset + start);
       const to = model.getPositionAt(startOffset + start + length);

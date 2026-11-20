@@ -6,8 +6,8 @@ import './style.css';
 
 const STORAGE_KEY = 'latex-soreau-v1';
 const defaults: Appearance = { ink: '#000000', background: 'transparent', fontSize: 32, padding: 16, scale: 2 };
-type Settings = Appearance & { display: boolean; theme: string; saveDraft: boolean; format: string; quality: number };
-let settings: Settings = { ...defaults, display: true, theme: 'system', saveDraft: true, format: 'svg', quality: 95 };
+type Settings = Appearance & { display: boolean; theme: string; saveDraft: boolean; format: string; quality: number; keyboardMath: boolean };
+let settings: Settings = { ...defaults, display: true, theme: 'system', saveDraft: true, format: 'svg', quality: 95, keyboardMath: true };
 let source = examples['Quadratic formula'];
 let storageAvailable = true;
 let shared = false;
@@ -28,6 +28,7 @@ function readSettings(value: unknown) {
     display: typeof v.display === 'boolean' ? v.display : settings.display,
     theme: ['light', 'dark', 'system'].includes(String(v.theme)) ? String(v.theme) : settings.theme,
     saveDraft: typeof v.saveDraft === 'boolean' ? v.saveDraft : settings.saveDraft,
+    keyboardMath: typeof v.keyboardMath === 'boolean' ? v.keyboardMath : settings.keyboardMath,
     format: ['svg', 'png', 'jpg', 'webp', 'tex'].includes(String(v.format)) ? String(v.format) : settings.format,
     quality: clamp(v.quality, 10, 100, settings.quality),
   };
@@ -59,6 +60,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <summary>Settings</summary>
         <div class="dropdown-panel preferences-panel">
           <label class="inline-label" for="theme">Theme <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <label class="checkbox" title="Type / for a fraction, * for ×, and &lt;=, &gt;=, !=, -&gt;, =&gt;, ... for their symbols."><input id="keyboard-math" type="checkbox" checked /> Keyboard math shortcuts</label>
           <label class="checkbox"><input id="save-draft" type="checkbox" checked /> Save draft in this browser</label>
           <span id="save-status" class="hint"></span>
         </div>
@@ -100,7 +102,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           </div>
         </div>
         <div id="editor" aria-busy="true"><p class="editor-loading">Loading editor…</p></div>
-        <div class="editor-footer"><span>Type <kbd>\\</kbd> for commands. <kbd>Tab</kbd> accepts, <kbd>Ctrl</kbd>+<kbd>Space</kbd> lists them.</span></div>
+        <div class="editor-footer"><span>Type <kbd>\\</kbd> for commands. <kbd>/</kbd> makes a fraction, <kbd>*</kbd> makes ×. <kbd>Tab</kbd> accepts, <kbd>Ctrl</kbd>+<kbd>Space</kbd> lists them.</span></div>
       </section>
       <section class="preview-panel" aria-labelledby="preview-title">
         <div class="panel-heading"><h2 id="preview-title">Preview</h2></div>
@@ -141,6 +143,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </div>
     <details class="help"><summary>Help &amp; shortcuts</summary><div class="help-content">
       <p>Write math directly, without <code>$</code> delimiters. Pasted <code>$…$</code>, <code>$$…$$</code>, <code>\\(…\\)</code>, and <code>\\[…\\]</code> also work. This is an equation editor, not a full LaTeX document compiler.</p>
+      <p>Keyboard math is on by default: type <code>/</code> after an expression to turn it into a fraction, <code>*</code> for ×, and <code>&lt;=</code>, <code>&gt;=</code>, <code>!=</code>, <code>-&gt;</code>, <code>=&gt;</code>, <code>...</code> for ≤, ≥, ≠, →, ⇒, …. These shortcuts stay literal inside <code>\\text{…}</code> and comments. After filling a shortcut fraction's denominator, an arithmetic or comparison operator continues outside it. Turn the shortcuts off in Settings to type the characters exactly.</p>
       <p>Use <code>\\\\</code> between equations for centered line breaks, or <code>\\begin{aligned}a &amp;= b \\\\ c &amp;= d\\end{aligned}</code> to align them. Plain newlines in the source are whitespace, as in LaTeX. Image exports keep the line breaks; LaTeX downloads and Copy LaTeX keep your original source. AMS math, matrices, cases, colors, and common physics commands are supported.</p>
       <p><kbd>Tab</kbd> accepts a suggestion, then moves through the snippet fields. <kbd>Ctrl</kbd>+<kbd>Space</kbd> lists commands anywhere, including after a partial word like <code>frac</code>. <kbd>Shift</kbd>+<kbd>Tab</kbd> goes back a snippet field, or outdents. <kbd>Esc</kbd> clears a selection, then leaves the editor. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes edits, including loading an example or clearing. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> renders immediately. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> downloads. Use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd> on Mac.</p>
       <p>The editor is Monaco, the same editor as VS Code, with its default shortcuts: <kbd>Ctrl</kbd>+<kbd>A</kbd> selects everything, <kbd>Ctrl</kbd>+<kbd>D</kbd> adds the next matching selection, <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> moves a line, <kbd>Ctrl</kbd>+<kbd>F</kbd> finds, and dragging or double-clicking selects text.</p>
@@ -213,6 +216,7 @@ const editorReady = import('./editor').then(async module => {
   editor = module.createEditor(container, {
     value: source,
     dark: prefersDark(),
+    keyboardMath: () => settings.keyboardMath,
     onInput(value) {
       source = value;
       updateCount();
@@ -406,6 +410,7 @@ function syncControls() {
   applyTheme();
   input('display').checked = settings.display;
   input('save-draft').checked = settings.saveDraft;
+  input('keyboard-math').checked = settings.keyboardMath;
   input('ink').value = settings.ink;
   select('ink-preset').value = ['#000000', '#ffffff'].includes(settings.ink) ? settings.ink : 'custom';
   select('background-preset').value = ['transparent', '#000000', '#ffffff'].includes(settings.background) ? settings.background : 'custom';
@@ -422,6 +427,7 @@ function appearanceChanged() { updatePreview(); save(); }
 select('theme').addEventListener('change', () => { settings.theme = select('theme').value; applyTheme(); save(); });
 input('display').addEventListener('change', () => { settings.display = input('display').checked; queueRender(); save(); });
 input('save-draft').addEventListener('change', () => { settings.saveDraft = input('save-draft').checked; save(); });
+input('keyboard-math').addEventListener('change', () => { settings.keyboardMath = input('keyboard-math').checked; save(); });
 for (const kind of ['ink', 'background'] as const) {
   select(`${kind}-preset`).addEventListener('change', () => {
     const value = select(`${kind}-preset`).value;
