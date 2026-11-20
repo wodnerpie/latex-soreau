@@ -310,6 +310,15 @@ export function keyboardMathEdit(source: string, cursor: number): ShortcutEdit |
   const { comments } = scan;
   const suffix = (text: string) => source.slice(cursor - text.length, cursor) === text;
 
+  if (suffix('txt')) {
+    const start = cursor - 3;
+    const before = start > 0 ? source[start - 1] : '';
+    const boundary = before === '' || (!/[A-Za-z0-9_]/.test(before) && before !== '\\' && before !== '^');
+    if (boundary && !isLiteralContext(source, start, comments)) {
+      return { start, end: cursor, text: '\\text{}', cursor: start + '\\text{'.length };
+    }
+    return undefined;
+  }
   if (suffix('...')) {
     const start = cursor - 3;
     if (!isLiteralContext(source, start, comments)) return replacement(source, start, cursor, '\\ldots ');

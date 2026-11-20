@@ -296,6 +296,23 @@ test('exits a shortcut fraction when an operator follows', async ({ page }) => {
   await expect.poll(() => getValue(page)).toBe('\\frac{1}{(2+3)}');
 });
 
+test('turns txt into a text command', async ({ page }) => {
+  await setSource(page, '');
+  await page.keyboard.type('txthello');
+  await expect.poll(() => getValue(page)).toBe('\\text{hello}');
+  await ready(page);
+
+  await setSource(page, '');
+  await page.keyboard.type('txt');
+  await expect.poll(() => getValue(page)).toBe('\\text{}');
+  await page.keyboard.type('txt');
+  await expect.poll(() => getValue(page)).toBe('\\text{txt}');
+
+  await setSource(page, '');
+  await page.keyboard.type('mytxt');
+  await expect.poll(() => getValue(page)).toBe('mytxt');
+});
+
 test('keyboard math shortcuts can be turned off', async ({ page }) => {
   await openMenu(page, '#preferences');
   await page.locator('#keyboard-math').uncheck();

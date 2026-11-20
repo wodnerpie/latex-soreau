@@ -80,8 +80,22 @@ describe('keyboard math shortcuts', () => {
       ['a->', 'a\\to '],
       ['a=>', 'a\\Rightarrow '],
       ['a...', 'a\\ldots '],
+      ['txt', '\\text{}'],
+      ['a txt', 'a \\text{}'],
     ])('turns %s into %s', (source, result) => {
       expect(converted(source)?.result).toBe(result);
+    });
+    it('puts the cursor inside the new text command', () => {
+      const value = converted('txt');
+      expect(value?.result[value.edit.cursor]).toBe('}');
+      expect(value?.result.slice(0, value.edit.cursor)).toBe('\\text{');
+    });
+    it('leaves longer words, commands, and existing text alone', () => {
+      expect(converted('mytxt')).toBeUndefined();
+      expect(converted('x_txt')).toBeUndefined();
+      expect(converted('\\txt')).toBeUndefined();
+      expect(converted('\\text{txt', 9)).toBeUndefined();
+      expect(converted('a % txt', 7)).toBeUndefined();
     });
     it('leaves command stars and escaped signs alone', () => {
       expect(converted('\\operatorname*')).toBeUndefined();
