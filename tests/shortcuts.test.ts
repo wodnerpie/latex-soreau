@@ -71,7 +71,7 @@ describe('keyboard math shortcuts', () => {
 
   describe('symbols', () => {
     it.each([
-      ['a*', 'a\\times '],
+      ['a*', 'a\\times{}'],
       ['a<=', 'a\\le '],
       ['a>=', 'a\\ge '],
       ['a!=', 'a\\ne '],

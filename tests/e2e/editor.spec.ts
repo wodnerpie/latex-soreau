@@ -247,7 +247,7 @@ test('turns keyboard math signs into LaTeX while typing', async ({ page }) => {
 
   await setSource(page, '');
   await page.keyboard.type('a*b');
-  await expect.poll(() => getValue(page)).toBe('a\\times b');
+  await expect.poll(() => getValue(page)).toBe('a\\times{}b');
 
   await setSource(page, '');
   await page.keyboard.type('x<=y');
@@ -270,18 +270,18 @@ test('turns keyboard math signs into LaTeX while typing', async ({ page }) => {
   await expect.poll(() => getValue(page)).toBe('\\text{a/b}');
 });
 
-test('exits a shortcut fraction when an operator follows', async ({ page }) => {
+test('keeps typing inside a shortcut fraction like a normal \\frac', async ({ page }) => {
   await setSource(page, '');
   await page.keyboard.type('1/2+3');
-  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2}+3');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2+3}');
 
   await setSource(page, '');
   await page.keyboard.type('1/2*3');
-  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2}\\times 3');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2\\times{}3}');
 
   await setSource(page, '');
   await page.keyboard.type('1/2/3');
-  await expect.poll(() => getValue(page)).toBe('\\frac{\\frac{1}{2}}{3}');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{\\frac{2}{3}}');
 
   await setSource(page, '');
   await page.keyboard.type('1/-2');
@@ -289,11 +289,22 @@ test('exits a shortcut fraction when an operator follows', async ({ page }) => {
 
   await setSource(page, '');
   await page.keyboard.type('1/2=3');
-  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2}=3');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2=3}');
 
   await setSource(page, '');
   await page.keyboard.type('1/(2+3)');
   await expect.poll(() => getValue(page)).toBe('\\frac{1}{(2+3)}');
+
+  await setSource(page, '');
+  await page.keyboard.type('R_2 / R_1 + R_2');
+  await expect.poll(() => getValue(page)).toBe('\\frac{R_2}{ R_1 + R_2}');
+
+  // Like a normal \frac, leaving the denominator is a manual cursor move.
+  await setSource(page, '');
+  await page.keyboard.type('1/2');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.type('+3');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2}+3');
 });
 
 test('turns txt into a text command', async ({ page }) => {

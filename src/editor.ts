@@ -289,11 +289,10 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
   });
 
   let applying = false;
-  // Cursor offsets inside denominators created by the `/` shortcut. Typing an
-  // operator there moves the operator past the fraction instead of growing the
-  // denominator: 1/2+3 should mean 1/2 + 3, not 1/(2+3).
+  // Fraction commands created by the `/` shortcut, keyed by the cursor inside
+  // their empty denominator. This lets `=/` and `/=` turn back into `\ne`
+  // before anything is typed in the denominator.
   const autoDenominators = new Map<number, { start: number }>();
-  const autoExitCharacters = new Set(['+', '-', '=', '<', '>', '&', '*', '/']);
 
   const movePosition = (position: number, change: monaco.editor.IModelContentChange) => {
     const start = change.rangeOffset;
@@ -331,6 +330,7 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
       if (applied) {
         const cursor = model.getPositionAt(edit.cursor);
         editor.setPosition(cursor);
+        editor.trigger('keyboard-math', 'hideSuggestWidget', {});
         if (trackDenominator) autoDenominators.set(edit.cursor, { start: edit.start });
       }
       editor.pushUndoStop();
@@ -376,6 +376,7 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
           }]);
           const cursor = model.getPositionAt(tracked.start + text.length);
           editor.setPosition(cursor);
+          editor.trigger('keyboard-math', 'hideSuggestWidget', {});
         } finally {
           applying = false;
         }
@@ -383,37 +384,6 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
         return;
       }
     }
-    if (shortcut !== undefined && tracked !== undefined && change && change.rangeLength === 0 && autoExitCharacters.has(shortcut)) {
-      const source = editor.getValue();
-      const offset = change.rangeOffset;
-      // Keep a leading minus inside an empty denominator (1/-2) and only exit
-      // once the denominator has content (1/2+3).
-      if (source[offset] === shortcut && source[offset + 1] === '}' && source[offset - 1] !== '{') {
-        const model = editor.getModel();
-        if (!model) return;
-        const from = model.getPositionAt(offset);
-        const to = model.getPositionAt(offset + 2);
-        applying = true;
-        try {
-          editor.executeEdits('keyboard-math-exit', [{
-            range: new monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column),
-            text: `}${shortcut}`,
-            forceMoveMarkers: true,
-          }]);
-          const cursor = model.getPositionAt(offset + 2);
-          editor.setPosition(cursor);
-        } finally {
-          applying = false;
-        }
-        if (shortcut === '*' || shortcut === '/') {
-          const next = keyboardMathEdit(editor.getValue(), offset + 2);
-          if (next) applyShortcut(next, shortcut === '/');
-        }
-        editor.pushUndoStop();
-        return;
-      }
-    }
-
     if (applying || event.isUndoing || event.isRedoing || change?.text.length !== 1) return;
     const edit = keyboardMathEdit(editor.getValue(), change.rangeOffset + change.text.length);
     if (!edit) return;

@@ -333,7 +333,7 @@ export function keyboardMathEdit(source: string, cursor: number): ShortcutEdit |
   if (source[cursor - 1] === '*') {
     const start = cursor - 1;
     if (isEscaped(source, start) || isCommandStar(source, start, comments) || isLiteralContext(source, start, comments)) return undefined;
-    return replacement(source, start, cursor, '\\times ');
+    return replacement(source, start, cursor, '\\times{}');
   }
   if (source[cursor - 1] !== '/') return undefined;
 
