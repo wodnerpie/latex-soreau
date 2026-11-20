@@ -247,7 +247,19 @@ test('turns keyboard math signs into LaTeX while typing', async ({ page }) => {
 
   await setSource(page, '');
   await page.keyboard.type('a*b');
-  await expect.poll(() => getValue(page)).toBe('a\\times{}b');
+  await expect.poll(() => getValue(page)).toBe('a\\times b');
+
+  await setSource(page, '');
+  await page.keyboard.type('a*2');
+  await expect.poll(() => getValue(page)).toBe('a\\times2');
+
+  await setSource(page, '');
+  await page.keyboard.type('a*R');
+  await expect.poll(() => getValue(page)).toBe('a\\times R');
+
+  await setSource(page, '');
+  await page.keyboard.type('a * b');
+  await expect.poll(() => getValue(page)).toBe('a \\times b');
 
   await setSource(page, '');
   await page.keyboard.type('x<=y');
@@ -277,7 +289,7 @@ test('keeps typing inside a shortcut fraction like a normal \\frac', async ({ pa
 
   await setSource(page, '');
   await page.keyboard.type('1/2*3');
-  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2\\times{}3}');
+  await expect.poll(() => getValue(page)).toBe('\\frac{1}{2\\times3}');
 
   await setSource(page, '');
   await page.keyboard.type('1/2/3');
@@ -322,6 +334,10 @@ test('turns txt into a text command', async ({ page }) => {
   await setSource(page, '');
   await page.keyboard.type('mytxt');
   await expect.poll(() => getValue(page)).toBe('mytxt');
+
+  await setSource(page, '');
+  await page.keyboard.type('I_txthello');
+  await expect.poll(() => getValue(page)).toBe('I_\\text{hello}');
 });
 
 test('keyboard math shortcuts can be turned off', async ({ page }) => {
@@ -484,18 +500,18 @@ test('spaces accented characters using their actual glyph widths in preview and 
   }
 });
 
-test('uses Liberation Sans for interface text and Gelasio for the heading', async ({ page }) => {
+test('uses Liberation Sans for interface text and Computer Modern for the heading', async ({ page }) => {
   const fonts = await page.evaluate(async () => {
     await document.fonts.ready;
     return {
       body: getComputedStyle(document.body).fontFamily,
       heading: getComputedStyle(document.querySelector('h1')!).fontFamily,
       sans: document.fonts.check('14px "Liberation Sans"'),
-      serif: document.fonts.check('600 18px "Gelasio"'),
+      serif: document.fonts.check('700 18px "CMU Serif"'),
     };
   });
   expect(fonts.body).toContain('Liberation Sans');
-  expect(fonts.heading).toContain('Gelasio');
+  expect(fonts.heading).toContain('CMU Serif');
   expect(fonts.sans).toBe(true);
   expect(fonts.serif).toBe(true);
 });

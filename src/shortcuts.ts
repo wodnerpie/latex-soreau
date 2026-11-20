@@ -313,7 +313,7 @@ export function keyboardMathEdit(source: string, cursor: number): ShortcutEdit |
   if (suffix('txt')) {
     const start = cursor - 3;
     const before = start > 0 ? source[start - 1] : '';
-    const boundary = before === '' || (!/[A-Za-z0-9_]/.test(before) && before !== '\\' && before !== '^');
+    const boundary = before === '' || (!/[A-Za-z0-9]/.test(before) && before !== '\\');
     if (boundary && !isLiteralContext(source, start, comments)) {
       return { start, end: cursor, text: '\\text{}', cursor: start + '\\text{'.length };
     }
@@ -333,7 +333,7 @@ export function keyboardMathEdit(source: string, cursor: number): ShortcutEdit |
   if (source[cursor - 1] === '*') {
     const start = cursor - 1;
     if (isEscaped(source, start) || isCommandStar(source, start, comments) || isLiteralContext(source, start, comments)) return undefined;
-    return replacement(source, start, cursor, '\\times{}');
+    return replacement(source, start, cursor, '\\times');
   }
   if (source[cursor - 1] !== '/') return undefined;
 

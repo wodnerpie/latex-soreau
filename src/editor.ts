@@ -293,6 +293,9 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
   // their empty denominator. This lets `=/` and `/=` turn back into `\ne`
   // before anything is typed in the denominator.
   const autoDenominators = new Map<number, { start: number }>();
+  // Positions immediately after a bare command such as \times. A following
+  // letter needs a delimiter so it is not parsed as part of the command name.
+  const commandBoundaries = new Set<number>();
 
   const movePosition = (position: number, change: monaco.editor.IModelContentChange) => {
     const start = change.rangeOffset;
@@ -313,6 +316,19 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
       if (cursor !== undefined && start !== undefined) autoDenominators.set(cursor, { start });
       // A change spanning an edge removed the fraction; drop it.
     }
+    for (const offset of [...commandBoundaries]) {
+      commandBoundaries.delete(offset);
+      const start = change.rangeOffset;
+      const end = start + change.rangeLength;
+      if (start === offset && change.rangeLength === 0) {
+        commandBoundaries.add(offset + change.text.length);
+      } else if (end < offset) {
+        commandBoundaries.add(offset + change.text.length - change.rangeLength);
+      } else if (start > offset) {
+        commandBoundaries.add(offset);
+      }
+      // Any edit touching the command removes the boundary.
+    }
   };
 
   const applyShortcut = (edit: ShortcutEdit, trackDenominator: boolean) => {
@@ -332,6 +348,7 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
         editor.setPosition(cursor);
         editor.trigger('keyboard-math', 'hideSuggestWidget', {});
         if (trackDenominator) autoDenominators.set(edit.cursor, { start: edit.start });
+        if (edit.text === '\\times') commandBoundaries.add(edit.cursor);
       }
       editor.pushUndoStop();
       return applied;
@@ -348,12 +365,46 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
       ? typed : undefined;
     const tracked = shortcut !== undefined && change !== undefined
       ? autoDenominators.get(change.rangeOffset) : undefined;
+    const boundary = !applying && !event.isUndoing && !event.isRedoing && change
+      && change.rangeLength === 0 && change.text.length === 1 && commandBoundaries.has(change.rangeOffset)
+      ? change.rangeOffset : undefined;
 
-    if (event.isUndoing || event.isRedoing) autoDenominators.clear();
-    else if (change) trackChange(change);
-    else autoDenominators.clear();
+    if (event.isUndoing || event.isRedoing) {
+      autoDenominators.clear();
+      commandBoundaries.clear();
+    } else if (change) trackChange(change);
+    else {
+      autoDenominators.clear();
+      commandBoundaries.clear();
+    }
 
     if (!options.keyboardMath()) return;
+    // A bare \times followed by a letter needs a delimiter; otherwise the
+    // letter would become part of the control word (\timesb).
+    if (boundary !== undefined && change) {
+      commandBoundaries.delete(boundary);
+      commandBoundaries.delete(boundary + 1);
+      if (/[A-Za-z]/.test(change.text)) {
+        const model = editor.getModel();
+        if (model) {
+          const at = model.getPositionAt(boundary);
+          applying = true;
+          try {
+            editor.executeEdits('keyboard-math-separator', [{
+              range: new monaco.Range(at.lineNumber, at.column, at.lineNumber, at.column),
+              text: ' ',
+              forceMoveMarkers: true,
+            }]);
+            editor.setPosition(model.getPositionAt(boundary + 2));
+            editor.trigger('keyboard-math', 'hideSuggestWidget', {});
+          } finally {
+            applying = false;
+          }
+          editor.pushUndoStop();
+        }
+        return;
+      }
+    }
     // `/=` starts as a fraction before the `=` arrives. If the denominator is
     // still empty, turn the whole `\frac{x}{=}` back into `x \ne`.
     if (shortcut === '=' && tracked && change && change.rangeLength === 0) {
@@ -415,6 +466,7 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
       const model = editor.getModel();
       if (!model) return;
       autoDenominators.clear();
+      commandBoundaries.clear();
       applying = true;
       try {
         model.setValue(value);
@@ -429,6 +481,7 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
       const model = editor.getModel();
       if (!model) return;
       autoDenominators.clear();
+      commandBoundaries.clear();
       applying = true;
       try {
         editor.pushUndoStop();

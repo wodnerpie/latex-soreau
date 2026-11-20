@@ -26,11 +26,25 @@
   font-style: italic;
   font-display: swap;
 }
+@font-face {
+  font-family: "CMU Serif";
+  src: url("./fonts/computer-modern/cmu-serif-500-roman.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "CMU Serif";
+  src: url("./fonts/computer-modern/cmu-serif-700-roman.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 :root {
   font-family: var(--sans);
   color-scheme: light;
   --sans: "Liberation Sans", Arial, Helvetica, sans-serif;
-  --serif: "Gelasio", Georgia, "Times New Roman", serif;
+  --serif: "CMU Serif", "Latin Modern Roman", Georgia, "Times New Roman", serif;
   --page: #f6f6f6;
   --surface: #ffffff;
   --text: #202020;

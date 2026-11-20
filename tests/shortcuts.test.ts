@@ -71,7 +71,7 @@ describe('keyboard math shortcuts', () => {
 
   describe('symbols', () => {
     it.each([
-      ['a*', 'a\\times{}'],
+      ['a*', 'a\\times'],
       ['a<=', 'a\\le '],
       ['a>=', 'a\\ge '],
       ['a!=', 'a\\ne '],
@@ -82,6 +82,8 @@ describe('keyboard math shortcuts', () => {
       ['a...', 'a\\ldots '],
       ['txt', '\\text{}'],
       ['a txt', 'a \\text{}'],
+      ['I_txt', 'I_\\text{}'],
+      ['x^txt', 'x^\\text{}'],
     ])('turns %s into %s', (source, result) => {
       expect(converted(source)?.result).toBe(result);
     });
@@ -92,7 +94,6 @@ describe('keyboard math shortcuts', () => {
     });
     it('leaves longer words, commands, and existing text alone', () => {
       expect(converted('mytxt')).toBeUndefined();
-      expect(converted('x_txt')).toBeUndefined();
       expect(converted('\\txt')).toBeUndefined();
       expect(converted('\\text{txt', 9)).toBeUndefined();
       expect(converted('a % txt', 7)).toBeUndefined();

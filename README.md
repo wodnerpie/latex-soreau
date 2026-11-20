@@ -6,7 +6,7 @@ Live at **https://latex.soreau.eu**. A small equation editor, not a full LaTeX d
 - Monaco, the editor from VS Code, with LaTeX highlighting, Tab completion, editable snippets, and the usual shortcuts (select all, drag select, multi-cursor, find, undo).
 - Commands autocomplete after `\`, and `Ctrl+Space` lists them anywhere, including after a bare word like `frac`.
 - Keyboard math while typing: `/` turns the expression before it into a fraction, `*` becomes ×, `txt` expands to `\text{…}`, and `<=`, `>=`, `!=`, `=/`, `/=`, `->`, `=>`, `...` become ≤, ≥, ≠, →, ⇒, …. These stay literal in `\text{…}` and comments and can be switched off in Settings.
-- Self-hosted fonts: Liberation Sans for the interface, Gelasio for the heading, and JetBrains Mono for the editor.
+- Self-hosted fonts: Liberation Sans for the interface, Computer Modern (CMU Serif) for the heading, and JetBrains Mono for the editor.
 - SVG, PNG, JPG, WebP, and raw `.tex` exports; copy source or PNG to the clipboard.
 - Black, white, or custom equation/background colors; transparency; font size, padding, image scale, and JPEG/WebP quality.
 - Local draft saving (optional), share links, light/dark/system themes, and mobile layout.
@@ -39,9 +39,9 @@ SITE_URL=https://latex.soreau.eu npm run test:e2e
 
 Vite + TypeScript, native HTML controls, Monaco Editor (LaTeX features registered in `src/editor.ts`), and MathJax 3's TeX-to-SVG renderer in a dedicated web worker. SVG exports contain glyph paths and do not depend on installed fonts. Raster exports use browser canvas, with dimension/memory limits. Only the TeX packages listed in `src/render.ts` are enabled; dynamic package loading, HTML, and URL commands are disabled. Macro/input limits and a worker watchdog contain expensive or recursive expressions.
 
-Liberation Sans is bundled under the SIL Open Font License (see `src/fonts/liberation-sans/LICENSE.txt`); Gelasio comes from `@fontsource/gelasio`.
+Liberation Sans is bundled under the SIL Open Font License (see `src/fonts/liberation-sans/LICENSE.txt`); Computer Modern is bundled under the SIL Open Font License (see `src/fonts/computer-modern/OFL.txt`).
 
-`src/shortcuts.ts` turns keyboard math into source LaTeX while typing: `/` wraps the expression before it in a fraction, `*` becomes `\times`, `txt` expands to `\text{}`, and common comparison/arrow spellings become their symbols. It reads backwards without crossing a binary operator, so `2x/3` and `f(x)/2` keep their whole numerator. A shortcut-created denominator behaves like a normal `\frac{…}{…}`: typing stays inside it until the cursor is moved out (→). Shortcuts never apply inside `\text{…}`, `\operatorname{…}`, or comments, and pasted text is left exactly as pasted.
+`src/shortcuts.ts` turns keyboard math into source LaTeX while typing: `/` wraps the expression before it in a fraction, `*` becomes `\times` (with a delimiter space only when a letter follows), `txt` expands to `\text{}`, and common comparison/arrow spellings become their symbols. It reads backwards without crossing a binary operator, so `2x/3` and `f(x)/2` keep their whole numerator. A shortcut-created denominator behaves like a normal `\frac{…}{…}`: typing stays inside it until the cursor is moved out (→). Shortcuts never apply inside `\text{…}`, `\operatorname{…}`, or comments, and pasted text is left exactly as pasted.
 
 Monaco is imported as the editor API plus its feature set (`src/monaco-setup.ts`) instead of `editor.main`, which would also ship ~90 language grammars and an LSP client. The editor model uses LF line endings so downloads and share links stay portable. The preview SVG is snapped to whole device pixels after every render and resize, which is what keeps thin fraction bars and glyph edges crisp instead of blurring across a half-pixel boundary.
 
