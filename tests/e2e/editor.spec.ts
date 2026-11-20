@@ -484,6 +484,22 @@ test('spaces accented characters using their actual glyph widths in preview and 
   }
 });
 
+test('uses Liberation Sans for interface text and Gelasio for the heading', async ({ page }) => {
+  const fonts = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return {
+      body: getComputedStyle(document.body).fontFamily,
+      heading: getComputedStyle(document.querySelector('h1')!).fontFamily,
+      sans: document.fonts.check('14px "Liberation Sans"'),
+      serif: document.fonts.check('600 18px "Gelasio"'),
+    };
+  });
+  expect(fonts.body).toContain('Liberation Sans');
+  expect(fonts.heading).toContain('Gelasio');
+  expect(fonts.sans).toBe(true);
+  expect(fonts.serif).toBe(true);
+});
+
 test('uses the self-hosted JetBrains Mono font in the editor', async ({ page }) => {
   const loaded = await page.evaluate(async () => {
     await document.fonts.load('15px "JetBrains Mono"');

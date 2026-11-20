@@ -11,6 +11,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@fontsource/gelasio": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "mathjax-full": "^3.2.1",
     "monaco-editor": "^0.57.0"

@@ -2,6 +2,7 @@ import { templates, examples } from './templates';
 import type { EditorHandle } from './editor';
 import { buildSvg, dimensions, download, imageBlob, type Appearance } from './export';
 import type { RenderedEquation } from './render';
+import '@fontsource/gelasio/latin-600.css';
 import './style.css';
 
 const STORAGE_KEY = 'latex-soreau-v1';
