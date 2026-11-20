@@ -75,6 +75,8 @@ describe('keyboard math shortcuts', () => {
       ['a<=', 'a\\le '],
       ['a>=', 'a\\ge '],
       ['a!=', 'a\\ne '],
+      ['a=/', 'a\\ne '],
+      ['a/=', 'a\\ne '],
       ['a->', 'a\\to '],
       ['a=>', 'a\\Rightarrow '],
       ['a...', 'a\\ldots '],

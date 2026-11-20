@@ -315,7 +315,7 @@ export function keyboardMathEdit(source: string, cursor: number): ShortcutEdit |
     if (!isLiteralContext(source, start, comments)) return replacement(source, start, cursor, '\\ldots ');
     return undefined;
   }
-  for (const [from, to] of [['<=', '\\le '], ['>=', '\\ge '], ['!=', '\\ne '], ['->', '\\to '], ['=>', '\\Rightarrow ']] as const) {
+  for (const [from, to] of [['<=', '\\le '], ['>=', '\\ge '], ['!=', '\\ne '], ['=/', '\\ne '], ['/=', '\\ne '], ['->', '\\to '], ['=>', '\\Rightarrow ']] as const) {
     if (!suffix(from)) continue;
     const start = cursor - from.length;
     if (isEscaped(source, start) || isLiteralContext(source, start, comments)) return undefined;

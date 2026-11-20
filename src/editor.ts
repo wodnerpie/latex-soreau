@@ -292,25 +292,27 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
   // Cursor offsets inside denominators created by the `/` shortcut. Typing an
   // operator there moves the operator past the fraction instead of growing the
   // denominator: 1/2+3 should mean 1/2 + 3, not 1/(2+3).
-  const autoDenominators = new Set<number>();
+  const autoDenominators = new Map<number, { start: number }>();
   const autoExitCharacters = new Set(['+', '-', '=', '<', '>', '&', '*', '/']);
 
-  const trackChange = (change: monaco.editor.IModelContentChange) => {
-    const delta = change.text.length - change.rangeLength;
+  const movePosition = (position: number, change: monaco.editor.IModelContentChange) => {
     const start = change.rangeOffset;
     const end = start + change.rangeLength;
-    for (const offset of [...autoDenominators]) {
+    const delta = change.text.length - change.rangeLength;
+    if (position < start) return position;
+    if (position > end) return position + delta;
+    if (position === start) return change.rangeLength === 0 ? position + change.text.length : undefined;
+    if (position === end) return position + delta;
+    return undefined;
+  };
+
+  const trackChange = (change: monaco.editor.IModelContentChange) => {
+    for (const [offset, fraction] of [...autoDenominators]) {
       autoDenominators.delete(offset);
-      if (end <= offset && start < offset) {
-        autoDenominators.add(offset + delta);
-      } else if (start >= offset) {
-        if (start === offset) {
-          if (change.rangeLength === 0) autoDenominators.add(offset + change.text.length);
-        } else {
-          autoDenominators.add(offset);
-        }
-      }
-      // A change spanning the tracked position removed the fragment; drop it.
+      const cursor = movePosition(offset, change);
+      const start = movePosition(fraction.start, change);
+      if (cursor !== undefined && start !== undefined) autoDenominators.set(cursor, { start });
+      // A change spanning an edge removed the fraction; drop it.
     }
   };
 
@@ -329,7 +331,7 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
       if (applied) {
         const cursor = model.getPositionAt(edit.cursor);
         editor.setPosition(cursor);
-        if (trackDenominator) autoDenominators.add(edit.cursor);
+        if (trackDenominator) autoDenominators.set(edit.cursor, { start: edit.start });
       }
       editor.pushUndoStop();
       return applied;
@@ -344,14 +346,44 @@ export function createEditor(parent: HTMLElement, options: EditorOptions): Edito
     const typed = change?.text;
     const shortcut = !applying && !event.isUndoing && !event.isRedoing && typed?.length === 1
       ? typed : undefined;
-    const tracked = shortcut !== undefined && change !== undefined && autoDenominators.has(change.rangeOffset);
+    const tracked = shortcut !== undefined && change !== undefined
+      ? autoDenominators.get(change.rangeOffset) : undefined;
 
     if (event.isUndoing || event.isRedoing) autoDenominators.clear();
     else if (change) trackChange(change);
     else autoDenominators.clear();
 
     if (!options.keyboardMath()) return;
-    if (shortcut !== undefined && tracked && change && change.rangeLength === 0 && autoExitCharacters.has(shortcut)) {
+    // `/=` starts as a fraction before the `=` arrives. If the denominator is
+    // still empty, turn the whole `\frac{x}{=}` back into `x \ne`.
+    if (shortcut === '=' && tracked && change && change.rangeLength === 0) {
+      const source = editor.getValue();
+      const offset = change.rangeOffset;
+      if (source[offset] === '=' && source[offset + 1] === '}' && source[offset - 1] === '{'
+        && source[offset - 2] === '}' && source.startsWith('\\frac{', tracked.start)) {
+        const model = editor.getModel();
+        if (!model) return;
+        const numerator = source.slice(tracked.start + '\\frac{'.length, offset - 2);
+        const text = `${numerator}\\ne `;
+        const from = model.getPositionAt(tracked.start);
+        const to = model.getPositionAt(offset + 2);
+        applying = true;
+        try {
+          editor.executeEdits('keyboard-math-not-equal', [{
+            range: new monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column),
+            text,
+            forceMoveMarkers: true,
+          }]);
+          const cursor = model.getPositionAt(tracked.start + text.length);
+          editor.setPosition(cursor);
+        } finally {
+          applying = false;
+        }
+        editor.pushUndoStop();
+        return;
+      }
+    }
+    if (shortcut !== undefined && tracked !== undefined && change && change.rangeLength === 0 && autoExitCharacters.has(shortcut)) {
       const source = editor.getValue();
       const offset = change.rangeOffset;
       // Keep a leading minus inside an empty denominator (1/-2) and only exit

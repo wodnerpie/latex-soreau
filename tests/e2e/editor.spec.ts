@@ -258,6 +258,14 @@ test('turns keyboard math signs into LaTeX while typing', async ({ page }) => {
   await expect.poll(() => getValue(page)).toBe('f\\to g');
 
   await setSource(page, '');
+  await page.keyboard.type('x=/y');
+  await expect.poll(() => getValue(page)).toBe('x\\ne y');
+
+  await setSource(page, '');
+  await page.keyboard.type('x/=y');
+  await expect.poll(() => getValue(page)).toBe('x\\ne y');
+
+  await setSource(page, '');
   await page.keyboard.type('\\text{a/b}');
   await expect.poll(() => getValue(page)).toBe('\\text{a/b}');
 });

@@ -5,7 +5,7 @@ Live at **https://latex.soreau.eu**. A small equation editor, not a full LaTeX d
 - Live vector preview; missing closing braces, `\right` delimiters, and `\end{…}` tags are completed for the preview, so half-written equations stay visible. Other errors never replace the last valid equation with a large one.
 - Monaco, the editor from VS Code, with LaTeX highlighting, Tab completion, editable snippets, and the usual shortcuts (select all, drag select, multi-cursor, find, undo).
 - Commands autocomplete after `\`, and `Ctrl+Space` lists them anywhere, including after a bare word like `frac`.
-- Keyboard math while typing: `/` turns the expression before it into a fraction, `*` becomes ×, and `<=`, `>=`, `!=`, `->`, `=>`, `...` become ≤, ≥, ≠, →, ⇒, …. These stay literal in `\text{…}` and comments and can be switched off in Settings.
+- Keyboard math while typing: `/` turns the expression before it into a fraction, `*` becomes ×, and `<=`, `>=`, `!=`, `=/`, `/=`, `->`, `=>`, `...` become ≤, ≥, ≠, →, ⇒, …. These stay literal in `\text{…}` and comments and can be switched off in Settings.
 - JetBrains Mono, self-hosted, for the editor.
 - SVG, PNG, JPG, WebP, and raw `.tex` exports; copy source or PNG to the clipboard.
 - Black, white, or custom equation/background colors; transparency; font size, padding, image scale, and JPEG/WebP quality.
