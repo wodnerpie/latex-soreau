@@ -4,6 +4,17 @@ import { buildSvg, dimensions, download, imageBlob, type Appearance } from './ex
 import type { RenderedEquation } from './render';
 import './style.css';
 
+// Keep the manifest discoverable if an older cached shell or an intermediary
+// strips the static link from <head>. Chrome otherwise reports that the page
+// has no manifest URL and refuses installation.
+if (!document.querySelector('link[rel="manifest"]')) {
+  const manifest = document.createElement('link');
+  manifest.rel = 'manifest';
+  manifest.href = '/manifest.webmanifest';
+  manifest.type = 'application/manifest+json';
+  document.head.append(manifest);
+}
+
 const STORAGE_KEY = 'latex-soreau-v1';
 const defaults: Appearance = { ink: '#000000', background: 'transparent', fontSize: 32, padding: 16, scale: 2 };
 type Settings = Appearance & { display: boolean; theme: string; saveDraft: boolean; format: string; quality: number; keyboardMath: boolean };
