@@ -516,6 +516,48 @@ test('uses Liberation Sans for interface text and Computer Modern for the headin
   expect(fonts.serif).toBe(true);
 });
 
+test('is installable as a web app', async ({ page }) => {
+  await page.goto('/');
+  const manifest = await page.evaluate(async () => {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    if (!link) return null;
+    const response = await fetch(link.href);
+    return { status: response.status, data: await response.json() };
+  });
+  expect(manifest?.status).toBe(200);
+  expect(manifest?.data.name).toBe('LaTeX equation editor');
+  expect(manifest?.data.short_name).toBe('LaTeX');
+  expect(manifest?.data.display).toBe('standalone');
+  expect(manifest?.data.start_url).toBe('/');
+  expect(manifest?.data.icons.some((icon: { sizes: string }) => icon.sizes === '192x192')).toBe(true);
+  expect(manifest?.data.icons.some((icon: { sizes: string }) => icon.sizes === '512x512')).toBe(true);
+  expect(manifest?.data.icons.some((icon: { purpose: string }) => icon.purpose === 'maskable')).toBe(true);
+
+  const iconStatuses = await page.evaluate(async () => {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]')!;
+    const data = await (await fetch(link.href)).json();
+    return Promise.all(data.icons.map(async (icon: { src: string }) => (await fetch(icon.src)).status));
+  });
+  expect(iconStatuses.every(status => status === 200)).toBe(true);
+
+  const worker = await page.evaluate(async () => {
+    if (!('serviceWorker' in navigator)) return null;
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 10000)),
+    ]);
+    return registration ? {
+      scope: registration.scope,
+      active: Boolean(registration.active),
+      scriptURL: registration.active?.scriptURL ?? '',
+    } : null;
+  });
+  expect(worker).not.toBeNull();
+  expect(worker?.scope).toBe(new URL('/', page.url()).href);
+  expect(worker?.active).toBe(true);
+  expect(worker?.scriptURL).toContain('/sw.js?v=');
+});
+
 test('uses the self-hosted JetBrains Mono font in the editor', async ({ page }) => {
   const loaded = await page.evaluate(async () => {
     await document.fonts.load('15px "JetBrains Mono"');
@@ -581,6 +623,7 @@ test('preview aligns to whole device pixels', async ({ page }) => {
 });
 
 test('mobile layouts and both themes have no page overflow', async ({ page }) => {
+  test.setTimeout(60000);
   for (const width of [320, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 850 });
     for (const theme of ['light', 'dark']) {

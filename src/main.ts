@@ -176,7 +176,7 @@ document.addEventListener('keydown', event => {
     menu.querySelector('summary')?.focus();
     event.preventDefault();
   }
-});
+}, true);
 el('source-actions').addEventListener('click', event => {
   if (!(event.target instanceof HTMLButtonElement)) return;
   closeMenu('source-actions');
@@ -532,3 +532,10 @@ updateCount();
 queueRender(true);
 if (!storageAvailable) el('save-status').textContent = 'Browser storage unavailable';
 else el('save-status').textContent = shared ? 'Shared equation loaded' : settings.saveDraft ? 'Draft stays in this browser' : 'Draft saving off';
+// The browser offers installation when the manifest and service worker meet
+// its criteria. There is deliberately no in-page install button.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register(`/sw.js?v=${__SW_VERSION__}`).catch(() => {});
+  });
+}

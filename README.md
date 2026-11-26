@@ -11,6 +11,7 @@ Live at **https://latex.soreau.eu**. A small equation editor, not a full LaTeX d
 - Black, white, or custom equation/background colors; transparency; font size, padding, image scale, and JPEG/WebP quality.
 - Local draft saving (optional), share links, light/dark/system themes, and mobile layout.
 - A focused default view: editor, preview, format, download, and Copy image. Insert, More, Appearance, Export options, and Settings menus reveal secondary tools only when needed.
+- Installable as a web app: the browser offers installation from a web manifest, self-hosted icons, and a service worker. There is deliberately no in-page install button.
 - Browser-only rendering. No API, accounts, equation uploads, external assets, analytics, or tracking.
 
 ## Develop
@@ -41,6 +42,8 @@ Vite + TypeScript, native HTML controls, Monaco Editor (LaTeX features registere
 
 Liberation Sans is bundled under the SIL Open Font License (see `src/fonts/liberation-sans/LICENSE.txt`); Computer Modern is bundled under the SIL Open Font License (see `src/fonts/computer-modern/OFL.txt`).
 
+`public/manifest.webmanifest` and `public/sw.js` make the site installable. The service worker registration carries a per-build version, which gives each deploy a fresh cache; activation deletes older build caches. The worker precaches the shell and build assets, then caches fonts and other runtime requests on first use.
+
 `src/shortcuts.ts` turns keyboard math into source LaTeX while typing: `/` wraps the expression before it in a fraction, `*` becomes `\times` (with a delimiter space only when a letter follows), `txt` expands to `\text{}`, and common comparison/arrow spellings become their symbols. It reads backwards without crossing a binary operator, so `2x/3` and `f(x)/2` keep their whole numerator. A shortcut-created denominator behaves like a normal `\frac{…}{…}`: typing stays inside it until the cursor is moved out (→). Shortcuts never apply inside `\text{…}`, `\operatorname{…}`, or comments, and pasted text is left exactly as pasted.
 
 Monaco is imported as the editor API plus its feature set (`src/monaco-setup.ts`) instead of `editor.main`, which would also ship ~90 language grammars and an LSP client. The editor model uses LF line endings so downloads and share links stay portable. The preview SVG is snapped to whole device pixels after every render and resize, which is what keeps thin fraction bars and glyph edges crisp instead of blurring across a half-pixel boundary.
@@ -65,7 +68,7 @@ The worker returns either a successful SVG or a short error. The UI only replace
 
 ## Deployment
 
-The VPS uses the existing `coolify-proxy` Traefik instance and external Docker network `coolify`. The site has its own Compose project in `/srv/soreau.eu/apps/latex`, with no published host ports. Traefik routes `latex.soreau.eu` to port 8080 and obtains/renews the Let's Encrypt certificate. No changes to the shared proxy configuration are required. Read `/srv/soreau.eu/AGENTS.md` for shared organization and service lifecycle rules.
+The VPS uses the existing `coolify-proxy` Traefik instance and external Docker network `coolify`. The site has its own Compose project in `/srv/soreau.eu/apps/latex`, with no published host ports. Traefik routes `latex.soreau.eu` to port 8080 and obtains/renews the Let's Encrypt certificate. No changes to the shared proxy configuration are required. Read `/srv/soreau.eu/AGENTS.md` for shared organization and service lifecycle rules. Keep `manifest.webmanifest`, `sw.js`, and `icons/` at the site root: the service worker scope must remain `/` for the install prompt.
 
 ```sh
 # In the canonical checkout at /srv/soreau.eu/apps/latex on the VPS:
